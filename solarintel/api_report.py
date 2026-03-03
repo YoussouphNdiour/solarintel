@@ -21,7 +21,45 @@ from pydantic import BaseModel
 
 logger = logging.getLogger("solarintel.api_report")
 
+# ---------------------------------------------------------------------------
+# Ollama configuration — override via environment variables on Render.com
+# ---------------------------------------------------------------------------
+OLLAMA_HOST  = os.getenv("OLLAMA_HOST",  "http://localhost:11434")
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3")
+
+logger.info("Ollama config — host=%s model=%s", OLLAMA_HOST, OLLAMA_MODEL)
+
 router = APIRouter()
+
+
+# ---------------------------------------------------------------------------
+# Ollama status endpoint — called by the frontend to show connection state
+# ---------------------------------------------------------------------------
+
+@router.get("/api/ollama/status")
+def ollama_status():
+    """Vérifie si le serveur Ollama est joignable et liste les modèles disponibles."""
+    import urllib.request
+    import json as _json
+
+    try:
+        url = OLLAMA_HOST.rstrip("/") + "/api/tags"
+        with urllib.request.urlopen(url, timeout=5) as resp:
+            data = _json.loads(resp.read())
+        models = [m["name"] for m in data.get("models", [])]
+        return {
+            "status": "online",
+            "host": OLLAMA_HOST,
+            "active_model": OLLAMA_MODEL,
+            "available_models": models,
+        }
+    except Exception as exc:
+        return {
+            "status": "offline",
+            "host": OLLAMA_HOST,
+            "active_model": OLLAMA_MODEL,
+            "error": str(exc),
+        }
 
 
 # ---------------------------------------------------------------------------
@@ -268,7 +306,7 @@ def _run_crewai(req: ReportRequest) -> str | None:
         from crewai import Agent, Task, Crew, Process  # type: ignore
         from langchain_ollama import OllamaLLM          # type: ignore
 
-        llm = OllamaLLM(model="llama3", base_url="http://localhost:11434", timeout=60)
+        llm = OllamaLLM(model=OLLAMA_MODEL, base_url=OLLAMA_HOST, timeout=90)
 
         night_kwh = sum(
             a.qty * a.power * a.hoursNight / 1000 for a in req.appliances

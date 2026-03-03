@@ -205,6 +205,11 @@
                     <span id="apiStatusText">API hors ligne</span>
                 </span>
                 <span class="hidden sm:inline text-slate-600">|</span>
+                <span class="flex items-center gap-1.5">
+                    <span id="ollamaStatus" class="status-dot offline"></span>
+                    <span id="ollamaStatusText" class="hidden sm:inline">Ollama —</span>
+                </span>
+                <span class="hidden sm:inline text-slate-600">|</span>
                 <span class="hidden sm:inline">v1.0.0</span>
             </div>
         </div>
@@ -1060,6 +1065,28 @@ const API_BASE = (window.location.hostname === 'localhost' || window.location.ho
     : window.location.origin;
 let backendCallTimeout = null;
 
+async function checkOllama() {
+    try {
+        const res = await fetch(`${API_BASE}/api/ollama/status`, { signal: AbortSignal.timeout(6000) });
+        if (!res.ok) throw new Error(res.statusText);
+        const data = await res.json();
+        const dot  = document.getElementById('ollamaStatus');
+        const txt  = document.getElementById('ollamaStatusText');
+        if (data.status === 'online') {
+            dot.className  = 'status-dot online';
+            txt.textContent = `${data.active_model} ✓`;
+            txt.title = `Ollama en ligne — ${data.available_models.join(', ')}`;
+        } else {
+            dot.className  = 'status-dot offline';
+            txt.textContent = 'Ollama hors ligne';
+            txt.title = data.error || '';
+        }
+    } catch {
+        document.getElementById('ollamaStatus').className  = 'status-dot offline';
+        document.getElementById('ollamaStatusText').textContent = 'Ollama —';
+    }
+}
+
 async function checkBackend() {
     try {
         const res = await fetch(`${API_BASE}/health`, { signal: AbortSignal.timeout(3000) });
@@ -1376,7 +1403,9 @@ document.addEventListener('DOMContentLoaded', function() {
     renderApplianceTable();    // render energy balance table
     _safeCreateIcons();
     checkBackend();
+    checkOllama();
     setInterval(checkBackend, 15000);
+    setInterval(checkOllama, 30000);
 });
 </script>
 

@@ -1,6 +1,5 @@
 ###############################################################################
 # SolarIntel — Render.com deployment configuration
-# Single Docker web service: FastAPI serves both the API and index.html
 # Docs: https://render.com/docs/render-yaml-reference
 ###############################################################################
 
@@ -9,13 +8,22 @@ services:
   - type: web
     name: solarintel
     runtime: docker
-    region: oregon              # match your existing services region
-    plan: free                  # upgrade to starter ($7/mo) for zero-downtime
-    healthCheckPath: /healthz   # matches the /healthz alias in api.py
+    region: oregon
+    plan: free
+    healthCheckPath: /healthz
     envVars:
       - key: PORT
-        value: "8000"
-      # Uncomment and set if you have an external Ollama instance:
-      # - key: OLLAMA_HOST
-      #   value: http://your-ollama-host:11434
+        value: "10000"
+
+      # ── Ollama / LLM (votre propre serveur) ──────────────────────────────
+      # Remplacez la valeur par l'URL de votre serveur Ollama.
+      # Exemple : http://mon-serveur.example.com:11434
+      # Si vide, les recommandations IA seront générées statiquement.
+      - key: OLLAMA_HOST
+        value: "http://localhost:11434"
+
+      # Modèle Ollama à utiliser (llama3, mistral, qwen2, etc.)
+      - key: OLLAMA_MODEL
+        value: "llama3"
+
     autoDeploy: true
