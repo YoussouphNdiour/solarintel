@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import io
 import logging
+import os
+import tempfile
 from datetime import date
 from typing import Optional
 
@@ -241,11 +243,19 @@ def _build_pdf(req: ReportRequest) -> bytes:
         ),
     )
 
-    buf = io.BytesIO()
-    gen = ReportGenerator(report)
-    gen.generate(output=buf)
-    buf.seek(0)
-    return buf.read()
+    # ReportGenerator.generate() only accepts a file path, so we use a temp file.
+    tmp_fd, tmp_path = tempfile.mkstemp(suffix=".pdf")
+    os.close(tmp_fd)
+    try:
+        gen = ReportGenerator(report)
+        gen.generate(output_path=tmp_path)
+        with open(tmp_path, "rb") as f:
+            return f.read()
+    finally:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
 
 
 # ---------------------------------------------------------------------------
@@ -258,7 +268,7 @@ def _run_crewai(req: ReportRequest) -> str | None:
         from crewai import Agent, Task, Crew, Process  # type: ignore
         from langchain_ollama import OllamaLLM          # type: ignore
 
-        llm = OllamaLLM(model="llama3", timeout=60)
+        llm = OllamaLLM(model="llama3", base_url="http://localhost:11434", timeout=60)
 
         night_kwh = sum(
             a.qty * a.power * a.hoursNight / 1000 for a in req.appliances
