@@ -313,6 +313,14 @@
                             <option value="landscape">Paysage</option>
                         </select>
                     </div>
+                    <div class="col-span-3">
+                        <label class="block text-xs text-slate-400 mb-1">Type d'installation</label>
+                        <select id="installType" class="si-select" onchange="updateState('installType', this.value)">
+                            <option value="autoconsommation">Autoconsommation (réseau + solaire)</option>
+                            <option value="hybride">Hybride (réseau + solaire + batterie)</option>
+                            <option value="autonome">Site isolé / Hors-réseau</option>
+                        </select>
+                    </div>
                 </div>
                 <button id="btnCalpinage" onclick="generateCalpinage()"
                     class="w-full flex items-center justify-center gap-2 bg-solar-blue hover:bg-solar-blue-dark text-white font-semibold py-2.5 px-4 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
@@ -529,9 +537,13 @@
 // =========================================================================
 const PANEL_CATALOG = {
     "JA Solar": [
-        { model: "JAM72S30-545/MR", power: 545, width: 1134, height: 2278, efficiency: 21.1, tempCoeff: -0.350 },
-        { model: "JAM60S20-385/MR", power: 385, width: 1002, height: 1996, efficiency: 19.2, tempCoeff: -0.350 },
-        { model: "JAM78S30-600/MR", power: 600, width: 1134, height: 2465, efficiency: 21.5, tempCoeff: -0.340 },
+        { model: "JAM72S30-545/MR",  power: 545, width: 1134, height: 2278, efficiency: 21.1, tempCoeff: -0.350 },
+        { model: "JAM60S20-385/MR",  power: 385, width: 1002, height: 1996, efficiency: 19.2, tempCoeff: -0.350 },
+        { model: "JAM78S30-600/MR",  power: 600, width: 1134, height: 2465, efficiency: 21.5, tempCoeff: -0.340 },
+        { model: "JAM72D42-595/LB",  power: 595, width: 1134, height: 2382, efficiency: 22.1, tempCoeff: -0.290 },
+        { model: "JAM72D42-610/LB",  power: 610, width: 1134, height: 2382, efficiency: 22.7, tempCoeff: -0.290 },
+        { model: "JAM90D42-710/LB",  power: 710, width: 1303, height: 2384, efficiency: 22.8, tempCoeff: -0.290 },
+        { model: "JAM90D42-720/LB",  power: 720, width: 1303, height: 2384, efficiency: 23.1, tempCoeff: -0.290 },
     ],
     "Canadian Solar": [
         { model: "CS6W-545MS", power: 545, width: 1134, height: 2266, efficiency: 21.2, tempCoeff: -0.340 },
@@ -547,6 +559,10 @@ const PANEL_CATALOG = {
         { model: "TSM-545DEG19C.20", power: 545, width: 1134, height: 2278, efficiency: 21.1, tempCoeff: -0.340 },
         { model: "TSM-400DEG15M.20", power: 400, width: 1048, height: 2015, efficiency: 19.0, tempCoeff: -0.350 },
         { model: "TSM-600DEG21C.20", power: 600, width: 1134, height: 2384, efficiency: 22.0, tempCoeff: -0.330 },
+        { model: "TSM-595NEG19RC.20",power: 595, width: 1134, height: 2382, efficiency: 22.1, tempCoeff: -0.290 },
+        { model: "TSM-615NEG19RC.20",power: 615, width: 1134, height: 2382, efficiency: 22.8, tempCoeff: -0.290 },
+        { model: "TSM-700NEG21C.20", power: 700, width: 1303, height: 2384, efficiency: 22.5, tempCoeff: -0.290 },
+        { model: "TSM-710NEG21C.20", power: 710, width: 1303, height: 2384, efficiency: 22.8, tempCoeff: -0.290 },
     ],
 };
 
@@ -614,6 +630,7 @@ const _state = {
     spacingH_cm: 2,
     spacingV_cm: 5,
     orientation: "portrait",
+    installType: "autoconsommation",
     senelec_tariff: null,
     panelCount: 0,
     peakPower_kWc: 0,
@@ -678,7 +695,7 @@ function onStateChange(prop, value) {
 function updateKPIs() {
     const count = STATE.panelCount;
     const power = count * STATE.panelPower / 1000;
-    STATE.peakPower_kWc = power;
+    _state.peakPower_kWc = power;  // bypass proxy to avoid recursive onStateChange
 
     // Client-side estimate: 1650 kWh/kWc for Dakar
     const clientProduction = power * 1650 * 0.9;
@@ -1288,6 +1305,9 @@ require([
         STATE.polygonArea_m2 = Math.abs(area);
         STATE.centroid       = { latitude: centroid.latitude, longitude: centroid.longitude };
 
+        // Auto-zoom sur le polygone dessiné (extent en WebMercator pour la vue)
+        mapView.goTo(polygon.extent.expand(2.5));
+
         generateCalpinage();
     }
 });
@@ -1386,17 +1406,88 @@ function generateCalpinage() {
     // Update state → triggers KPI update
     STATE.panelCount = panels.length;
 
+    // Auto-suggestion d'équipements basée sur le type d'installation
+    if (panels.length > 0) suggestEquipment(panels.length);
+
     // Update hint
     const hint = document.getElementById('calpinageHint');
     if (panels.length > 0) {
-        hint.textContent = `${panels.length} panneaux places (${STATE.polygonArea_m2.toFixed(1)} m²)`;
-        hint.classList.remove('text-slate-500');
+        const installLabel = { autoconsommation: 'Autoconso.', hybride: 'Hybride', autonome: 'Site isolé' }[_state.installType] || '';
+        hint.textContent = `${panels.length} panneaux placés (${STATE.polygonArea_m2.toFixed(1)} m²) — ${installLabel}`;
+        hint.classList.remove('text-slate-500', 'text-solar-amber');
         hint.classList.add('text-green-400');
     } else {
         hint.textContent = 'Surface insuffisante pour placer des panneaux';
         hint.classList.remove('text-green-400');
         hint.classList.add('text-solar-amber');
     }
+}
+
+// =========================================================================
+// EQUIPMENT SUGGESTION — auto-fill inverter + battery after calpinage
+// =========================================================================
+function suggestEquipment(panelCount) {
+    const peakKwc = panelCount * (_state.panelPower || 545) / 1000;
+    const installType = _state.installType || 'autoconsommation';
+    const needsBattery = installType === 'hybride' || installType === 'autonome';
+
+    // Compute night load (kWh) from energy balance table
+    const nightKwh = applianceRows.reduce(function(sum, r) {
+        return sum + (r.qty || 1) * (r.power || 0) / 1000 * (r.hoursNight || 0);
+    }, 0);
+
+    // ── 1. Suggest inverter ──────────────────────────────────────────────
+    // Site isolé → GROWATT (Off-Grid capable); Hybride/Autoconso → GOODWE
+    const brand = (installType === 'autonome') ? 'GROWATT' : 'GOODWE';
+    const catalog = INVERTER_CATALOG[brand] || [];
+
+    let typeFilter;
+    if (installType === 'autonome') {
+        typeFilter = function(inv) { return inv.type.includes('Off-Grid') || inv.type.includes('Hybride'); };
+    } else if (installType === 'hybride') {
+        typeFilter = function(inv) { return inv.type.includes('Hybride') || inv.type.includes('Off-Grid'); };
+    } else {
+        typeFilter = function() { return true; };
+    }
+
+    const filtered = catalog.filter(typeFilter);
+    // Pick smallest model whose power ≥ peakKwc; fallback to largest
+    let suggested = filtered.find(function(inv) { return inv.power_kw >= peakKwc; });
+    if (!suggested) suggested = filtered[filtered.length - 1];
+    if (!suggested && catalog.length) suggested = catalog[catalog.length - 1];
+
+    if (suggested) {
+        const brandSel = document.getElementById('inverterBrand');
+        if (brandSel) { brandSel.value = brand; onInverterBrandChange(); }
+        const modelSel = document.getElementById('inverterModel');
+        if (modelSel) { modelSel.value = suggested.model; onInverterModelChange(); }
+        // Number of inverters needed
+        const qty = Math.min(5, Math.max(1, Math.ceil(peakKwc / (suggested.power_kw || 1))));
+        const qtyEl = document.getElementById('inverterQty');
+        if (qtyEl) { qtyEl.value = qty; }
+    }
+
+    // ── 2. Suggest battery ───────────────────────────────────────────────
+    const batSel = document.getElementById('batteryModel');
+    const batQtyEl = document.getElementById('batteryQty');
+    if (needsBattery && nightKwh > 0) {
+        // Required usable capacity = nightKwh × 1.25 safety margin
+        // LiFePO4 usable ≈ 90 % → total = nightKwh × 1.25 / 0.9
+        const capacityNeeded = nightKwh * 1.25 / 0.9;
+        let bat = BATTERY_CATALOG.find(function(b) { return b.capacity_kwh >= capacityNeeded; });
+        if (!bat) bat = BATTERY_CATALOG[BATTERY_CATALOG.length - 1];
+        if (bat && batSel) {
+            batSel.value = bat.model;
+            onBatteryModelChange();
+            const batQty = Math.max(1, Math.ceil(capacityNeeded / bat.capacity_kwh));
+            if (batQtyEl) batQtyEl.value = batQty;
+        }
+    } else if (!needsBattery && batSel) {
+        batSel.value = '';
+        onBatteryModelChange();
+    }
+
+    updateSystemCost();
 }
 
 // =========================================================================
