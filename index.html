@@ -1207,7 +1207,8 @@ require([
     "esri/Graphic",
     "esri/geometry/Polygon",
     "esri/geometry/Point",
-], function(Map, MapView, Sketch, geometryEngine, GraphicsLayer, Graphic, Polygon, Point) {
+    "esri/geometry/support/webMercatorUtils",
+], function(Map, MapView, Sketch, geometryEngine, GraphicsLayer, Graphic, Polygon, Point, webMercatorUtils) {
 
     geometryEngineRef = geometryEngine;
     GraphicRef = Graphic;
@@ -1275,14 +1276,18 @@ require([
     });
 
     function handlePolygonUpdate(polygon) {
-        const area = geometryEngine.geodesicArea(polygon, "square-meters");
-        const centroid = polygon.centroid;
+        // La carte est en WebMercator (EPSG:3857).
+        // On convertit en WGS84 (EPSG:4326) pour que le calpinage
+        // travaille en degrés et non en mètres projetés.
+        const geoPolygon = webMercatorUtils.webMercatorToGeographic(polygon);
 
-        STATE.polygon = polygon;
+        const area    = geometryEngine.geodesicArea(polygon, "square-meters");
+        const centroid = geoPolygon.centroid;
+
+        STATE.polygon        = geoPolygon;   // WGS84 — utilisé par generateCalpinage()
         STATE.polygonArea_m2 = Math.abs(area);
-        STATE.centroid = { latitude: centroid.latitude, longitude: centroid.longitude };
+        STATE.centroid       = { latitude: centroid.latitude, longitude: centroid.longitude };
 
-        // Auto-run calpinage on polygon complete/update
         generateCalpinage();
     }
 });
