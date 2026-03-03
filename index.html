@@ -381,6 +381,23 @@
                     Équipements Système
                 </h2>
 
+                <!-- Panneaux — prix + frais -->
+                <div class="mb-4">
+                    <p class="text-xs text-slate-500 uppercase tracking-wide mb-2">Panneaux solaires</p>
+                    <div class="grid grid-cols-2 gap-2">
+                        <div>
+                            <label class="block text-xs text-slate-400 mb-1">Prix unitaire (XOF/Wc)</label>
+                            <input id="panelPriceWc" type="number" class="si-input" value="650" min="0"
+                                   oninput="updateSystemCost()">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-slate-400 mb-1">Instal. / Livr. / Maint. (%)</label>
+                            <input id="installPct" type="number" class="si-input" value="15" min="0" max="60" step="1"
+                                   oninput="updateSystemCost()">
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Onduleur -->
                 <div class="mb-4">
                     <p class="text-xs text-slate-500 uppercase tracking-wide mb-2">Onduleur</p>
@@ -434,10 +451,34 @@
                     <div id="batterySpecs" class="flex flex-wrap gap-2"></div>
                 </div>
 
-                <!-- CAPEX Total -->
-                <div class="p-2 rounded-lg bg-slate-800/60 flex justify-between items-center text-xs border border-slate-700/50">
-                    <span class="text-slate-400">CAPEX Total Estimé</span>
-                    <span id="capexTotal" class="font-mono font-bold text-solar-amber">— XOF</span>
+                <!-- CAPEX Breakdown -->
+                <div class="rounded-lg border border-slate-700/50 overflow-hidden text-xs">
+                    <table class="w-full">
+                        <tbody class="divide-y divide-slate-800">
+                            <tr class="bg-slate-900/40">
+                                <td class="py-1.5 px-2 text-slate-400">Panneaux</td>
+                                <td id="capexPanels" class="py-1.5 px-2 text-right font-mono text-slate-300">— XOF</td>
+                            </tr>
+                            <tr class="bg-slate-900/40">
+                                <td class="py-1.5 px-2 text-slate-400">Onduleur(s)</td>
+                                <td id="capexInverter" class="py-1.5 px-2 text-right font-mono text-slate-300">— XOF</td>
+                            </tr>
+                            <tr class="bg-slate-900/40">
+                                <td class="py-1.5 px-2 text-slate-400">Batterie(s)</td>
+                                <td id="capexBattery" class="py-1.5 px-2 text-right font-mono text-slate-300">— XOF</td>
+                            </tr>
+                            <tr class="bg-slate-900/40">
+                                <td class="py-1.5 px-2 text-slate-400">Instal. / Livr. / Maint.</td>
+                                <td id="capexInstall" class="py-1.5 px-2 text-right font-mono text-slate-300">— XOF</td>
+                            </tr>
+                        </tbody>
+                        <tfoot>
+                            <tr class="bg-solar-blue/10 border-t border-solar-blue/30">
+                                <td class="py-2 px-2 font-semibold text-slate-200">CAPEX Total</td>
+                                <td id="capexTotal" class="py-2 px-2 text-right font-mono font-bold text-solar-amber">— XOF</td>
+                            </tr>
+                        </tfoot>
+                    </table>
                 </div>
             </section>
 
@@ -448,28 +489,36 @@
                     Bilan Énergétique
                 </h2>
                 <div class="overflow-x-auto">
-                    <table class="w-full text-xs" id="applianceTable">
+                    <table class="w-full" id="applianceTable" style="min-width:520px;font-size:0.78rem;">
                         <thead>
                             <tr class="text-slate-500 border-b border-slate-700 text-left">
-                                <th class="py-1 pr-1">Appareil</th>
-                                <th class="py-1 px-1 text-center w-10">Qté</th>
-                                <th class="py-1 px-1 text-center w-14">W</th>
-                                <th class="py-1 px-1 text-center w-12">h/Jour</th>
-                                <th class="py-1 px-1 text-center w-12">h/Nuit</th>
-                                <th class="py-1 pl-1 text-right w-14">kWh/j</th>
-                                <th class="py-1 pl-1 w-6"></th>
+                                <th class="py-1.5 pr-1" style="min-width:120px">Appareil</th>
+                                <th class="py-1.5 px-1 text-center" style="width:44px">Qté</th>
+                                <th class="py-1.5 px-1 text-center" style="width:60px">W</th>
+                                <th class="py-1.5 px-1 text-center" style="width:52px">h/Jour</th>
+                                <th class="py-1.5 px-1 text-center" style="width:52px">h/Nuit</th>
+                                <th class="py-1.5 px-1 text-right text-solar-amber" style="width:62px">kWh Jour</th>
+                                <th class="py-1.5 px-1 text-right text-blue-400" style="width:62px">kWh Nuit</th>
+                                <th class="py-1.5 pl-1 w-6"></th>
                             </tr>
                         </thead>
                         <tbody id="applianceTbody"></tbody>
-                        <tfoot>
-                            <tr class="border-t border-slate-700 font-semibold text-slate-300">
-                                <td colspan="5" class="py-2 pr-2 text-right text-slate-400">Total quotidien</td>
-                                <td id="totalDailyKwh" class="py-2 pl-1 text-right font-mono text-solar-amber">0.0</td>
+                        <tfoot class="border-t border-slate-700">
+                            <tr class="font-semibold text-slate-300">
+                                <td colspan="4" class="py-1.5 pr-2 text-right text-slate-400 text-xs">Total / jour</td>
+                                <td id="totalDailyKwh" class="py-1.5 px-1 text-right font-mono text-solar-amber">0.00</td>
+                                <td id="totalDayKwh"   class="py-1.5 px-1 text-right font-mono text-solar-amber">0.00</td>
+                                <td id="totalNightKwh" class="py-1.5 px-1 text-right font-mono text-blue-400">0.00</td>
                                 <td></td>
                             </tr>
-                            <tr class="text-slate-400">
-                                <td colspan="5" class="pb-1 pr-2 text-right">Mensuel (×30)</td>
-                                <td id="totalMonthlyKwh" class="pb-1 pl-1 text-right font-mono text-green-400">0.0 kWh</td>
+                            <tr class="text-slate-400 text-xs">
+                                <td colspan="4" class="pb-1.5 pr-2 text-right">Mensuel (×30)</td>
+                                <td id="totalMonthlyKwh" class="pb-1.5 px-1 text-right font-mono text-green-400" colspan="3">0.0 kWh</td>
+                                <td></td>
+                            </tr>
+                            <tr class="text-slate-500 text-xs">
+                                <td colspan="4" class="pb-1 pr-2 text-right">Puissance nocturne</td>
+                                <td id="peakNightW" class="pb-1 px-1 text-right font-mono text-blue-300" colspan="3">— W</td>
                                 <td></td>
                             </tr>
                         </tfoot>
@@ -639,6 +688,9 @@ const _state = {
     annualSavings: 0,
     paybackYears: 0,
     lcoe: 0,
+    panelPricePerWc: 650,
+    installPct: 15,
+    capexTotal: 0,
     backendAvailable: false,
 };
 
@@ -694,34 +746,61 @@ function onStateChange(prop, value) {
 // =========================================================================
 function updateKPIs() {
     const count = STATE.panelCount;
-    const power = count * STATE.panelPower / 1000;
-    _state.peakPower_kWc = power;  // bypass proxy to avoid recursive onStateChange
+    const power = count * STATE.panelPower / 1000;   // kWc
+    _state.peakPower_kWc = power;  // bypass proxy — évite la récursion
 
-    // Client-side estimate: 1650 kWh/kWc for Dakar
-    const clientProduction = power * 1650 * 0.9;
-    STATE.annualProduction_kWh = Math.round(clientProduction);
-
-    const annual = STATE.annualConsumption || 1;
-    STATE.coverageRate = Math.min(999, Math.round(clientProduction / annual * 100));
-
-    STATE.annualSavings = Math.round(clientProduction * STATE.electricity_price_kwh);
-
-    const totalCost = count * STATE.panelPower * 650;
-    STATE.paybackYears = STATE.annualSavings > 0 ? +(totalCost / STATE.annualSavings).toFixed(1) : 0;
-    STATE.lcoe = clientProduction > 0 ? +(totalCost / (clientProduction * 25 * 0.9)).toFixed(1) : 0;
-
-    // Update DOM
-    setKPI('kpiPanels', count || '—');
-    setKPI('kpiPower', power > 0 ? power.toFixed(2) : '—', 'kWc');
-    setKPI('kpiProduction', STATE.annualProduction_kWh > 0 ? numberFmt(STATE.annualProduction_kWh) : '—', 'kWh/an');
-    setKPI('kpiCoverage', STATE.coverageRate > 0 ? STATE.coverageRate : '—', '%');
-    setKPI('kpiSavings', STATE.annualSavings > 0 ? numberFmt(STATE.annualSavings) : '—', 'XOF');
-    setKPI('kpiPayback', STATE.paybackYears > 0 ? STATE.paybackYears : '—', 'ans');
-    setKPI('kpiLCOE', STATE.lcoe > 0 ? STATE.lcoe : '—', 'XOF/kWh');
-
-    // Update system cost (CAPEX)
+    // ── Mettre à jour le CAPEX d'abord (nécessaire pour payback/LCOE) ──
     updateSystemCost();
-    // Async backend call
+
+    // ── Production annuelle ────────────────────────────────────────────
+    // Rendement spécifique Dakar (pvlib PVGIS) : ~1 700 kWh/kWc·an (net pertes)
+    // Pertes système : souillure 2% + déphasage 2% + câblage DC 2% + câblage AC 1% + indispo 3% → ×0.904
+    const SPECIFIC_YIELD = 1700;  // kWh/kWc·an
+    const production = power * SPECIFIC_YIELD;
+    STATE.annualProduction_kWh = Math.round(production);
+
+    // ── Taux de couverture ─────────────────────────────────────────────
+    // Autoconsommation réseau : on estime 70 % d'autoconsommation directe
+    // Hybride (batterie) : 85 % ; Site isolé : 100 % (toute la prod est utilisée)
+    const selfUseRate = _state.installType === 'autonome' ? 1.0
+                      : _state.installType === 'hybride'  ? 0.85
+                      : 0.70;
+    const annual = STATE.annualConsumption || 1;
+    const usedEnergy = Math.min(production * selfUseRate, annual);
+    STATE.coverageRate = Math.min(100, Math.round(usedEnergy / annual * 100));
+
+    // ── Économies annuelles ────────────────────────────────────────────
+    STATE.annualSavings = Math.round(usedEnergy * STATE.electricity_price_kwh);
+
+    // ── CAPEX total (panneaux + onduleur + batterie + frais) ───────────
+    const totalCost = _state.capexTotal > 0
+        ? _state.capexTotal
+        : count * STATE.panelPower * 650 * 1.15;  // fallback : 650 XOF/Wc + 15%
+
+    // ── Retour sur investissement ──────────────────────────────────────
+    STATE.paybackYears = STATE.annualSavings > 0
+        ? +(totalCost / STATE.annualSavings).toFixed(1)
+        : 0;
+
+    // ── LCOE sur 25 ans avec dégradation 0,5 %/an ─────────────────────
+    // LCOE = Investissement / Production_vie_totale
+    const DEGRADATION = 0.005;
+    let lifetimeProd = 0;
+    for (let y = 1; y <= 25; y++) {
+        lifetimeProd += production * Math.pow(1 - DEGRADATION, y);
+    }
+    STATE.lcoe = lifetimeProd > 0 ? +(totalCost / lifetimeProd).toFixed(1) : 0;
+
+    // ── Mise à jour DOM ────────────────────────────────────────────────
+    setKPI('kpiPanels',    count || '—');
+    setKPI('kpiPower',     power > 0 ? power.toFixed(2) : '—', 'kWc');
+    setKPI('kpiProduction', STATE.annualProduction_kWh > 0 ? numberFmt(STATE.annualProduction_kWh) : '—', 'kWh/an');
+    setKPI('kpiCoverage',  STATE.coverageRate > 0 ? STATE.coverageRate : '—', '%');
+    setKPI('kpiSavings',   STATE.annualSavings > 0 ? numberFmt(STATE.annualSavings) : '—', 'XOF');
+    setKPI('kpiPayback',   STATE.paybackYears > 0 ? STATE.paybackYears : '—', 'ans');
+    setKPI('kpiLCOE',      STATE.lcoe > 0 ? STATE.lcoe : '—', 'XOF/kWh');
+
+    // Appel backend (pvlib + Senelec) pour affiner la simulation
     if (count > 0) callBackend();
 }
 
@@ -867,22 +946,38 @@ function onBatteryModelChange() {
 }
 
 function updateSystemCost() {
-    const panelCount = STATE.panelCount || 0;
-    const panelPower = STATE.panelPower || 545;
-    const capexPanels = panelCount * panelPower * 650;
+    const panelCount  = STATE.panelCount || 0;
+    const panelPower  = STATE.panelPower || 545;
+    const pricePerWc  = +(document.getElementById('panelPriceWc')?.value  || 650);
+    const installPct  = +(document.getElementById('installPct')?.value    || 15) / 100;
 
-    const invQty   = +(document.getElementById('inverterQty')?.value   || 1);
-    const invPrice = +(document.getElementById('inverterPrice')?.value || 0);
-    const batQty   = +(document.getElementById('batteryQty')?.value    || 1);
-    const batPrice = +(document.getElementById('batteryPrice')?.value  || 0);
-    const batModel = document.getElementById('batteryModel')?.value    || '';
+    const capexPanels = panelCount * panelPower * pricePerWc;
+
+    const invQty      = +(document.getElementById('inverterQty')?.value   || 1);
+    const invPrice    = +(document.getElementById('inverterPrice')?.value  || 0);
+    const batQty      = +(document.getElementById('batteryQty')?.value     || 1);
+    const batPrice    = +(document.getElementById('batteryPrice')?.value   || 0);
+    const batModel    = document.getElementById('batteryModel')?.value     || '';
 
     const capexInverter = invQty * invPrice;
     const capexBattery  = batModel ? batQty * batPrice : 0;
-    const total = capexPanels + capexInverter + capexBattery;
+    const capexEquip    = capexPanels + capexInverter + capexBattery;
+    const capexInstall  = Math.round(capexEquip * installPct);
+    const total         = capexEquip + capexInstall;
 
-    const el = document.getElementById('capexTotal');
-    if (el) el.textContent = total > 0 ? numberFmt(Math.round(total)) + ' XOF' : '— XOF';
+    // Persist to state for KPI calculations
+    _state.capexTotal     = total;
+    _state.panelPricePerWc = pricePerWc;
+    _state.installPct      = installPct * 100;
+
+    const fmt = function(n) { return n > 0 ? numberFmt(Math.round(n)) + ' XOF' : '— XOF'; };
+    const _s  = function(id, txt) { const el=document.getElementById(id); if(el) el.textContent=txt; };
+
+    _s('capexPanels',   fmt(capexPanels));
+    _s('capexInverter', fmt(capexInverter));
+    _s('capexBattery',  fmt(capexBattery));
+    _s('capexInstall',  fmt(capexInstall) + (installPct > 0 ? ' (' + Math.round(installPct*100) + '%)' : ''));
+    _s('capexTotal',    total > 0 ? numberFmt(Math.round(total)) + ' XOF' : '— XOF');
 }
 
 // =========================================================================
@@ -892,36 +987,47 @@ function renderApplianceTable() {
     const tbody = document.getElementById('applianceTbody');
     if (!tbody) return;
     tbody.innerHTML = '';
-    let totalDaily = 0;
+    let totalDaily = 0, totalDayKwh = 0, totalNightKwh = 0;
 
     applianceRows.forEach((row, idx) => {
-        const kwh = (row.qty * row.power * (row.hoursDay + row.hoursNight)) / 1000;
-        totalDaily += kwh;
+        const kwhDay   = (row.qty * row.power * row.hoursDay)   / 1000;
+        const kwhNight = (row.qty * row.power * row.hoursNight) / 1000;
+        const kwh      = kwhDay + kwhNight;
+        totalDaily     += kwh;
+        totalDayKwh    += kwhDay;
+        totalNightKwh  += kwhNight;
         const tr = document.createElement('tr');
-        tr.className = 'border-b border-slate-800/80';
+        tr.className = 'border-b border-slate-800/60';
         tr.innerHTML = `
-            <td class="py-1 pr-1">
-                <input type="text" value="${row.name.replace(/"/g, '&quot;')}" class="si-input text-xs py-0.5 px-1"
+            <td class="py-1.5 pr-1">
+                <input type="text" value="${row.name.replace(/"/g, '&quot;')}"
+                    style="min-width:110px"
+                    class="si-input py-1 px-2" style="font-size:0.78rem"
                     oninput="applianceRows[${idx}].name=this.value">
             </td>
-            <td class="py-1 px-1">
-                <input type="number" value="${row.qty}" min="1" class="si-input text-xs text-center py-0.5 px-1"
+            <td class="py-1.5 px-1">
+                <input type="number" value="${row.qty}" min="1"
+                    class="si-input text-center py-1 px-1" style="width:42px;font-size:0.78rem"
                     oninput="applianceRows[${idx}].qty=+this.value;refreshApplianceTotals()">
             </td>
-            <td class="py-1 px-1">
-                <input type="number" value="${row.power}" min="0" class="si-input text-xs text-center py-0.5 px-1"
+            <td class="py-1.5 px-1">
+                <input type="number" value="${row.power}" min="0"
+                    class="si-input text-center py-1 px-1" style="width:58px;font-size:0.78rem"
                     oninput="applianceRows[${idx}].power=+this.value;refreshApplianceTotals()">
             </td>
-            <td class="py-1 px-1">
-                <input type="number" value="${row.hoursDay}" min="0" max="24" step="0.5" class="si-input text-xs text-center py-0.5 px-1"
+            <td class="py-1.5 px-1">
+                <input type="number" value="${row.hoursDay}" min="0" max="24" step="0.5"
+                    class="si-input text-center py-1 px-1" style="width:50px;font-size:0.78rem"
                     oninput="applianceRows[${idx}].hoursDay=+this.value;refreshApplianceTotals()">
             </td>
-            <td class="py-1 px-1">
-                <input type="number" value="${row.hoursNight}" min="0" max="24" step="0.5" class="si-input text-xs text-center py-0.5 px-1"
+            <td class="py-1.5 px-1">
+                <input type="number" value="${row.hoursNight}" min="0" max="24" step="0.5"
+                    class="si-input text-center py-1 px-1" style="width:50px;font-size:0.78rem"
                     oninput="applianceRows[${idx}].hoursNight=+this.value;refreshApplianceTotals()">
             </td>
-            <td class="py-1 pl-1 text-right font-mono text-slate-300">${kwh.toFixed(2)}</td>
-            <td class="py-1 pl-1">
+            <td class="py-1.5 px-1 text-right font-mono text-solar-amber" style="font-size:0.78rem">${kwhDay.toFixed(2)}</td>
+            <td class="py-1.5 px-1 text-right font-mono text-blue-400" style="font-size:0.78rem">${kwhNight.toFixed(2)}</td>
+            <td class="py-1.5 pl-1">
                 <button onclick="removeApplianceRow(${idx})" class="text-slate-600 hover:text-red-400 transition-colors">
                     <i data-lucide="x" class="w-3 h-3"></i>
                 </button>
@@ -930,23 +1036,46 @@ function renderApplianceTable() {
         tbody.appendChild(tr);
     });
 
-    _syncApplianceTotals(totalDaily);
+    _syncApplianceTotals(totalDaily, totalDayKwh, totalNightKwh);
     _safeCreateIcons();
 }
 
 function refreshApplianceTotals() {
-    let totalDaily = 0;
-    applianceRows.forEach(row => {
-        totalDaily += (row.qty * row.power * (row.hoursDay + row.hoursNight)) / 1000;
+    let totalDaily = 0, totalDayKwh = 0, totalNightKwh = 0;
+    applianceRows.forEach(function(row) {
+        const kwhDay   = (row.qty * row.power * row.hoursDay)   / 1000;
+        const kwhNight = (row.qty * row.power * row.hoursNight) / 1000;
+        totalDayKwh   += kwhDay;
+        totalNightKwh += kwhNight;
+        totalDaily    += kwhDay + kwhNight;
     });
-    _syncApplianceTotals(totalDaily);
+    _syncApplianceTotals(totalDaily, totalDayKwh, totalNightKwh);
+    // Refresh table cell values in-place (avoid full re-render)
+    const rows = document.querySelectorAll('#applianceTbody tr');
+    rows.forEach(function(tr, idx) {
+        const row = applianceRows[idx];
+        if (!row) return;
+        const kwhDay   = (row.qty * row.power * row.hoursDay)   / 1000;
+        const kwhNight = (row.qty * row.power * row.hoursNight) / 1000;
+        const cells = tr.querySelectorAll('td');
+        if (cells[5]) cells[5].textContent = kwhDay.toFixed(2);
+        if (cells[6]) cells[6].textContent = kwhNight.toFixed(2);
+    });
 }
 
-function _syncApplianceTotals(totalDaily) {
-    const dailyEl   = document.getElementById('totalDailyKwh');
-    const monthlyEl = document.getElementById('totalMonthlyKwh');
-    if (dailyEl)   dailyEl.textContent   = totalDaily.toFixed(2);
-    if (monthlyEl) monthlyEl.textContent = (totalDaily * 30).toFixed(1) + ' kWh';
+function _syncApplianceTotals(totalDaily, totalDayKwh, totalNightKwh) {
+    const _set = function(id, txt) { const el=document.getElementById(id); if(el) el.textContent=txt; };
+
+    _set('totalDailyKwh',  totalDaily.toFixed(2));
+    _set('totalDayKwh',    totalDayKwh.toFixed(2));
+    _set('totalNightKwh',  totalNightKwh.toFixed(2));
+    _set('totalMonthlyKwh', (totalDaily * 30).toFixed(1) + ' kWh');
+
+    // Puissance nocturne crête (W) — somme des appareils actifs la nuit
+    const peakNight = applianceRows.reduce(function(s, r) {
+        return s + (r.hoursNight > 0 ? r.qty * r.power : 0);
+    }, 0);
+    _set('peakNightW', peakNight > 0 ? peakNight.toLocaleString('fr-FR') + ' W' : '— W');
 
     // Sync consumption fields from appliance table
     const monthly = Math.round(totalDaily * 30);
@@ -1005,8 +1134,18 @@ async function generateReport() {
         battery_model:          document.getElementById('batteryModel')?.value   || '',
         battery_qty:            +(document.getElementById('batteryQty')?.value    || 1),
         battery_price_xof:      +(document.getElementById('batteryPrice')?.value  || 0),
+        // CAPEX détaillé
+        panel_price_xof_wc:     +(document.getElementById('panelPriceWc')?.value  || 650),
+        install_pct:            +(document.getElementById('installPct')?.value    || 15),
+        capex_panels_xof:       Math.round((STATE.panelCount||0)*(STATE.panelPower||545)*(+(document.getElementById('panelPriceWc')?.value||650))),
+        capex_total_xof:        _state.capexTotal || 0,
+        install_type:           _state.installType || 'autoconsommation',
         // Bilan énergétique
         appliances: applianceRows,
+        daily_kwh_total:  applianceRows.reduce(function(s,r){return s+(r.qty*r.power*(r.hoursDay+r.hoursNight))/1000;},0),
+        daily_kwh_day:    applianceRows.reduce(function(s,r){return s+(r.qty*r.power*r.hoursDay)/1000;},0),
+        daily_kwh_night:  applianceRows.reduce(function(s,r){return s+(r.qty*r.power*r.hoursNight)/1000;},0),
+        peak_night_w:     applianceRows.reduce(function(s,r){return s+(r.hoursNight>0?r.qty*r.power:0);},0),
         // Métadonnées rapport
         company_name:  document.getElementById('companyName')?.value  || 'SolarIntel',
         report_title:  document.getElementById('reportTitle')?.value  || 'Étude de dimensionnement PV',
@@ -1017,6 +1156,7 @@ async function generateReport() {
         kpi_savings_xof:    STATE.annualSavings,
         kpi_payback_years:  STATE.paybackYears,
         kpi_lcoe:           STATE.lcoe,
+        kpi_peak_power_kwc: _state.peakPower_kWc || 0,
     };
 
     try {
