@@ -21,5 +21,5 @@ COPY . .
 # Expose port (Render/Cloud Run inject $PORT at runtime)
 EXPOSE 8000
 
-# Start FastAPI with uvicorn
-CMD ["uvicorn", "solarintel.api:app", "--host", "0.0.0.0", "--port", "8000"]
+# Start FastAPI — use $PORT injected by Render (default 8000 for local docker run)
+CMD ["sh", "-c", "uvicorn solarintel.api:app --host 0.0.0.0 --port ${PORT:-8000}"]

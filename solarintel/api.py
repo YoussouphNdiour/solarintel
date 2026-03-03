@@ -10,9 +10,16 @@ from __future__ import annotations
 import logging
 from functools import lru_cache
 
+from pathlib import Path
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, Response
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+
+# Root directory of the project (one level above solarintel/ package)
+_ROOT = Path(__file__).resolve().parent.parent
 
 logger = logging.getLogger("solarintel.api")
 
@@ -50,6 +57,33 @@ from solarintel.api_report import router as report_router
 
 app.include_router(senelec_router)
 app.include_router(report_router)
+
+# ---------------------------------------------------------------------------
+# Frontend static files — serve index.html + assets/
+# ---------------------------------------------------------------------------
+
+# Serve the assets/ folder under /assets (images, etc.)
+_assets_dir = _ROOT / "assets"
+if _assets_dir.is_dir():
+    app.mount("/assets", StaticFiles(directory=str(_assets_dir)), name="assets")
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+def favicon() -> Response:
+    """Return a 204 No Content for favicon requests (no file present)."""
+    return Response(status_code=204)
+
+
+@app.get("/", include_in_schema=False)
+def serve_frontend() -> FileResponse:
+    """Serve the SolarIntel single-page frontend."""
+    return FileResponse(str(_ROOT / "index.html"))
+
+
+@app.get("/healthz", include_in_schema=False)
+def healthz():
+    """Alias for /health — used as the Render health-check path."""
+    return {"status": "ok", "pvlib": _pvlib_ok}
 
 
 # ---------------------------------------------------------------------------
