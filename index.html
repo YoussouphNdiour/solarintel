@@ -1,0 +1,1381 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SolarIntel — Dimensionnement Solaire</title>
+
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+    <!-- TailwindCSS CDN — MUST load BEFORE ArcGIS to avoid AMD define() conflict -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'solar-blue': '#0EA5E9',
+                        'solar-blue-dark': '#0369A1',
+                        'solar-amber': '#F59E0B',
+                        'surface': '#1E293B',
+                        'bg-dark': '#0F172A',
+                        'border-slate': '#334155',
+                    },
+                    fontFamily: {
+                        mono: ['JetBrains Mono', 'monospace'],
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                    },
+                }
+            }
+        }
+    </script>
+
+    <!-- Lucide Icons — MUST load BEFORE ArcGIS to avoid AMD define() conflict -->
+    <script src="https://unpkg.com/lucide@latest" onload="window._lucideReady=true;"></script>
+
+    <!-- ArcGIS JS SDK 4.30 — loads LAST so its AMD loader takes over cleanly -->
+    <link rel="stylesheet" href="https://js.arcgis.com/4.30/esri/themes/dark/main.css">
+    <script src="https://js.arcgis.com/4.30/"></script>
+
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            background: #0F172A;
+            color: #F8FAFC;
+            font-family: 'Inter', system-ui, sans-serif;
+        }
+        .esri-view { border: none !important; outline: none !important; }
+        .esri-widget { background: #1E293B !important; color: #F8FAFC !important; }
+        .esri-sketch__panel { background: #1E293B !important; }
+        .esri-widget--button { background: #1E293B !important; color: #F8FAFC !important; }
+
+        /* Custom scrollbar */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: #0F172A; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #475569; }
+
+        /* Input styles */
+        .si-input {
+            background: #0F172A;
+            border: 1px solid #334155;
+            color: #F8FAFC;
+            padding: 0.5rem 0.75rem;
+            border-radius: 0.5rem;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.875rem;
+            width: 100%;
+            transition: border-color 0.2s;
+        }
+        .si-input:focus {
+            outline: none;
+            border-color: #0EA5E9;
+            box-shadow: 0 0 0 2px rgba(14, 165, 233, 0.15);
+        }
+
+        .si-select {
+            background: #0F172A;
+            border: 1px solid #334155;
+            color: #F8FAFC;
+            padding: 0.5rem 0.75rem;
+            border-radius: 0.5rem;
+            font-size: 0.875rem;
+            width: 100%;
+            cursor: pointer;
+            transition: border-color 0.2s;
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%2394a3b8' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+            background-position: right 0.5rem center;
+            background-repeat: no-repeat;
+            background-size: 1.5em 1.5em;
+            padding-right: 2.5rem;
+        }
+        .si-select:focus {
+            outline: none;
+            border-color: #0EA5E9;
+            box-shadow: 0 0 0 2px rgba(14, 165, 233, 0.15);
+        }
+
+        /* KPI card */
+        .kpi-card {
+            background: #0F172A;
+            border: 1px solid #334155;
+            border-radius: 0.75rem;
+            padding: 0.75rem 1rem;
+            transition: border-color 0.3s;
+        }
+        .kpi-card.highlight {
+            border-color: #0EA5E9;
+        }
+
+        /* Section card */
+        .section-card {
+            background: #1E293B;
+            border: 1px solid #334155;
+            border-radius: 0.75rem;
+            padding: 1.25rem;
+        }
+
+        /* Pulse animation for loading */
+        @keyframes kpi-pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        .kpi-loading { animation: kpi-pulse 1.5s ease-in-out infinite; }
+
+        /* Panel specs display */
+        .spec-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.25rem;
+            background: rgba(14, 165, 233, 0.1);
+            border: 1px solid rgba(14, 165, 233, 0.2);
+            border-radius: 0.375rem;
+            padding: 0.25rem 0.5rem;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.75rem;
+            color: #0EA5E9;
+        }
+
+        /* Map container */
+        #mapDiv { width: 100%; height: 100%; min-height: 400px; }
+
+        /* Basemap toggle */
+        .basemap-toggle {
+            position: absolute;
+            bottom: 1rem;
+            right: 1rem;
+            z-index: 10;
+            display: flex;
+            gap: 0.25rem;
+            background: #1E293B;
+            border: 1px solid #334155;
+            border-radius: 0.5rem;
+            padding: 0.25rem;
+        }
+        .basemap-btn {
+            padding: 0.375rem 0.75rem;
+            border-radius: 0.375rem;
+            font-size: 0.75rem;
+            font-weight: 500;
+            cursor: pointer;
+            border: none;
+            color: #94A3B8;
+            background: transparent;
+            transition: all 0.2s;
+        }
+        .basemap-btn.active {
+            background: #0EA5E9;
+            color: white;
+        }
+
+        /* Status indicator */
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+        .status-dot.online { background: #22C55E; }
+        .status-dot.offline { background: #EF4444; }
+    </style>
+</head>
+
+<body class="bg-bg-dark text-slate-50 font-sans">
+
+    <!-- Header -->
+    <header class="border-b border-border-slate bg-surface/80 backdrop-blur-sm sticky top-0 z-50">
+        <div class="max-w-[1920px] mx-auto px-4 py-3 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <div class="w-8 h-8 rounded-lg bg-solar-blue flex items-center justify-center">
+                    <i data-lucide="sun" class="w-5 h-5 text-white"></i>
+                </div>
+                <div>
+                    <h1 class="text-lg font-bold tracking-tight">SolarIntel</h1>
+                    <p class="text-xs text-slate-400">Dimensionnement Photovoltaique</p>
+                </div>
+            </div>
+            <div class="flex items-center gap-3 text-xs text-slate-400">
+                <span class="flex items-center gap-1.5">
+                    <span id="apiStatus" class="status-dot offline"></span>
+                    <span id="apiStatusText">API hors ligne</span>
+                </span>
+                <span class="hidden sm:inline text-slate-600">|</span>
+                <span class="hidden sm:inline">v1.0.0</span>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Layout: Split-screen -->
+    <main class="flex flex-col lg:flex-row" style="height: calc(100vh - 57px);">
+
+        <!-- LEFT PANEL: Form + Results -->
+        <aside class="w-full lg:w-[480px] xl:w-[520px] overflow-y-auto p-4 space-y-4 flex-shrink-0 border-r border-border-slate">
+
+            <!-- Section A: Configuration Panneau -->
+            <section class="section-card">
+                <h2 class="flex items-center gap-2 text-sm font-semibold text-slate-300 mb-3">
+                    <i data-lucide="cpu" class="w-4 h-4 text-solar-blue"></i>
+                    Configuration Panneau
+                </h2>
+                <div class="space-y-3">
+                    <div>
+                        <label class="block text-xs text-slate-400 mb-1">Marque</label>
+                        <select id="panelBrand" class="si-select" onchange="onBrandChange()">
+                            <option value="JA Solar">JA Solar</option>
+                            <option value="Canadian Solar">Canadian Solar</option>
+                            <option value="Longi">Longi</option>
+                            <option value="Trina Solar">Trina Solar</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs text-slate-400 mb-1">Modele</label>
+                        <select id="panelModel" class="si-select" onchange="onModelChange()">
+                        </select>
+                    </div>
+                    <div id="panelSpecs" class="flex flex-wrap gap-2 mt-2">
+                    </div>
+                </div>
+            </section>
+
+            <!-- Section B: Consommation -->
+            <section class="section-card">
+                <h2 class="flex items-center gap-2 text-sm font-semibold text-slate-300 mb-3">
+                    <i data-lucide="zap" class="w-4 h-4 text-solar-amber"></i>
+                    Consommation Electrique
+                </h2>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs text-slate-400 mb-1">Mensuelle (kWh/mois)</label>
+                        <input id="monthlyConsumption" type="number" class="si-input" value="500"
+                               oninput="onMonthlyChange()">
+                    </div>
+                    <div>
+                        <label class="block text-xs text-slate-400 mb-1">Annuelle (kWh/an)</label>
+                        <input id="annualConsumption" type="number" class="si-input" value="6000"
+                               oninput="onAnnualChange()">
+                    </div>
+                    <div>
+                        <label class="block text-xs text-slate-400 mb-1">Grille Senelec</label>
+                        <select id="senelecTariff" class="si-select" onchange="updateState('senelec_tariff', this.value || null)">
+                            <option value="">Tarif fixe (manuel)</option>
+                            <option value="DPP">DPP — Domestique Petite</option>
+                            <option value="DMP">DMP — Domestique Moyenne</option>
+                            <option value="PPP">PPP — Professionnel Petite</option>
+                            <option value="PMP">PMP — Professionnel Moyenne</option>
+                            <option value="DPP_WOYOFAL">DPP Woyofal</option>
+                            <option value="DMP_WOYOFAL">DMP Woyofal</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs text-slate-400 mb-1">Prix kWh (XOF) <span class="text-slate-500">si hors Senelec</span></label>
+                        <input id="priceKwh" type="number" class="si-input" value="118"
+                               oninput="updateState('electricity_price_kwh', +this.value)">
+                    </div>
+                    <div class="col-span-2">
+                        <label class="block text-xs text-slate-400 mb-1">Augmentation (%/an)</label>
+                        <input id="annualIncrease" type="number" class="si-input" value="3.5" step="0.1"
+                               oninput="updateState('annual_increase_pct', +this.value)">
+                    </div>
+                </div>
+            </section>
+
+            <!-- Section C: Calpinage -->
+            <section class="section-card">
+                <h2 class="flex items-center gap-2 text-sm font-semibold text-slate-300 mb-3">
+                    <i data-lucide="grid-3x3" class="w-4 h-4 text-solar-blue"></i>
+                    Parametres de Calpinage
+                </h2>
+                <div class="grid grid-cols-3 gap-3 mb-3">
+                    <div>
+                        <label class="block text-xs text-slate-400 mb-1">Esp. H (cm)</label>
+                        <input id="spacingH" type="number" class="si-input" value="2" min="0"
+                               oninput="updateState('spacingH_cm', +this.value)">
+                    </div>
+                    <div>
+                        <label class="block text-xs text-slate-400 mb-1">Esp. V (cm)</label>
+                        <input id="spacingV" type="number" class="si-input" value="5" min="0"
+                               oninput="updateState('spacingV_cm', +this.value)">
+                    </div>
+                    <div>
+                        <label class="block text-xs text-slate-400 mb-1">Orientation</label>
+                        <select id="orientation" class="si-select" onchange="updateState('orientation', this.value)">
+                            <option value="portrait">Portrait</option>
+                            <option value="landscape">Paysage</option>
+                        </select>
+                    </div>
+                </div>
+                <button id="btnCalpinage" onclick="generateCalpinage()"
+                    class="w-full flex items-center justify-center gap-2 bg-solar-blue hover:bg-solar-blue-dark text-white font-semibold py-2.5 px-4 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                    disabled>
+                    <i data-lucide="layout-grid" class="w-4 h-4"></i>
+                    Generer le Calpinage Automatique
+                </button>
+                <p id="calpinageHint" class="text-xs text-slate-500 mt-2 text-center">
+                    Dessinez un polygone sur la carte pour activer le calpinage
+                </p>
+            </section>
+
+            <!-- Section D: Resultats KPI -->
+            <section class="section-card">
+                <h2 class="flex items-center gap-2 text-sm font-semibold text-slate-300 mb-3">
+                    <i data-lucide="bar-chart-3" class="w-4 h-4 text-green-400"></i>
+                    Bilan de Production
+                </h2>
+                <div class="grid grid-cols-2 gap-3">
+                    <div class="kpi-card">
+                        <p class="text-xs text-slate-400">Panneaux</p>
+                        <p id="kpiPanels" class="text-xl font-mono font-bold text-solar-blue">—</p>
+                    </div>
+                    <div class="kpi-card">
+                        <p class="text-xs text-slate-400">Puissance crete</p>
+                        <p id="kpiPower" class="text-xl font-mono font-bold text-solar-blue">— <span class="text-sm font-normal text-slate-400">kWc</span></p>
+                    </div>
+                    <div class="kpi-card">
+                        <p class="text-xs text-slate-400">Production annuelle</p>
+                        <p id="kpiProduction" class="text-xl font-mono font-bold text-solar-amber">— <span class="text-sm font-normal text-slate-400">kWh/an</span></p>
+                    </div>
+                    <div class="kpi-card">
+                        <p class="text-xs text-slate-400">Taux couverture</p>
+                        <p id="kpiCoverage" class="text-xl font-mono font-bold text-green-400">— <span class="text-sm font-normal text-slate-400">%</span></p>
+                    </div>
+                    <div class="kpi-card">
+                        <p class="text-xs text-slate-400">Economie annuelle</p>
+                        <p id="kpiSavings" class="text-xl font-mono font-bold text-solar-amber">— <span class="text-sm font-normal text-slate-400">XOF</span></p>
+                    </div>
+                    <div class="kpi-card">
+                        <p class="text-xs text-slate-400">Retour invest.</p>
+                        <p id="kpiPayback" class="text-xl font-mono font-bold text-slate-200">— <span class="text-sm font-normal text-slate-400">ans</span></p>
+                    </div>
+                    <div class="kpi-card col-span-2">
+                        <p class="text-xs text-slate-400">LCOE</p>
+                        <p id="kpiLCOE" class="text-xl font-mono font-bold text-slate-200">— <span class="text-sm font-normal text-slate-400">XOF/kWh</span></p>
+                    </div>
+                </div>
+                <div id="surfaceInfo" class="mt-3 text-xs text-slate-500 text-center hidden">
+                    Surface toiture : <span id="surfaceValue" class="font-mono text-slate-300">—</span> m²
+                </div>
+            </section>
+
+            <!-- Section E: Équipements Système (Onduleur + Batteries) -->
+            <section class="section-card">
+                <h2 class="flex items-center gap-2 text-sm font-semibold text-slate-300 mb-3">
+                    <i data-lucide="settings-2" class="w-4 h-4 text-purple-400"></i>
+                    Équipements Système
+                </h2>
+
+                <!-- Onduleur -->
+                <div class="mb-4">
+                    <p class="text-xs text-slate-500 uppercase tracking-wide mb-2">Onduleur</p>
+                    <div class="grid grid-cols-2 gap-2 mb-2">
+                        <div>
+                            <label class="block text-xs text-slate-400 mb-1">Marque</label>
+                            <select id="inverterBrand" class="si-select" onchange="onInverterBrandChange()">
+                                <option value="GOODWE">GOODWE</option>
+                                <option value="GROWATT">GROWATT</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-xs text-slate-400 mb-1">Modèle</label>
+                            <select id="inverterModel" class="si-select" onchange="onInverterModelChange()"></select>
+                        </div>
+                        <div>
+                            <label class="block text-xs text-slate-400 mb-1">Quantité</label>
+                            <input id="inverterQty" type="number" class="si-input" value="1" min="1" oninput="updateSystemCost()">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-slate-400 mb-1">Prix unitaire (XOF)</label>
+                            <input id="inverterPrice" type="number" class="si-input" value="450000" oninput="updateSystemCost()">
+                        </div>
+                    </div>
+                    <div id="inverterSpecs" class="flex flex-wrap gap-2"></div>
+                </div>
+
+                <!-- Batteries UHOME -->
+                <div class="mb-4">
+                    <p class="text-xs text-slate-500 uppercase tracking-wide mb-2">Stockage — UHOME</p>
+                    <div class="grid grid-cols-2 gap-2 mb-2">
+                        <div class="col-span-2">
+                            <label class="block text-xs text-slate-400 mb-1">Modèle Batterie</label>
+                            <select id="batteryModel" class="si-select" onchange="onBatteryModelChange()">
+                                <option value="">Aucune batterie</option>
+                                <option value="UHOME 5.0kWh">UHOME 5.0 kWh — LiFePO4 6000 cycles</option>
+                                <option value="UHOME 10.0kWh">UHOME 10.0 kWh — LiFePO4 6000 cycles</option>
+                                <option value="UHOME 15.0kWh">UHOME 15.0 kWh — LiFePO4 6000 cycles</option>
+                                <option value="UHOME 20.0kWh">UHOME 20.0 kWh — LiFePO4 6000 cycles</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-xs text-slate-400 mb-1">Quantité</label>
+                            <input id="batteryQty" type="number" class="si-input" value="1" min="1" oninput="updateSystemCost()">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-slate-400 mb-1">Prix unitaire (XOF)</label>
+                            <input id="batteryPrice" type="number" class="si-input" value="900000" oninput="updateSystemCost()">
+                        </div>
+                    </div>
+                    <div id="batterySpecs" class="flex flex-wrap gap-2"></div>
+                </div>
+
+                <!-- CAPEX Total -->
+                <div class="p-2 rounded-lg bg-slate-800/60 flex justify-between items-center text-xs border border-slate-700/50">
+                    <span class="text-slate-400">CAPEX Total Estimé</span>
+                    <span id="capexTotal" class="font-mono font-bold text-solar-amber">— XOF</span>
+                </div>
+            </section>
+
+            <!-- Section F: Bilan Énergétique -->
+            <section class="section-card">
+                <h2 class="flex items-center gap-2 text-sm font-semibold text-slate-300 mb-3">
+                    <i data-lucide="table-2" class="w-4 h-4 text-green-400"></i>
+                    Bilan Énergétique
+                </h2>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-xs" id="applianceTable">
+                        <thead>
+                            <tr class="text-slate-500 border-b border-slate-700 text-left">
+                                <th class="py-1 pr-1">Appareil</th>
+                                <th class="py-1 px-1 text-center w-10">Qté</th>
+                                <th class="py-1 px-1 text-center w-14">W</th>
+                                <th class="py-1 px-1 text-center w-12">h/Jour</th>
+                                <th class="py-1 px-1 text-center w-12">h/Nuit</th>
+                                <th class="py-1 pl-1 text-right w-14">kWh/j</th>
+                                <th class="py-1 pl-1 w-6"></th>
+                            </tr>
+                        </thead>
+                        <tbody id="applianceTbody"></tbody>
+                        <tfoot>
+                            <tr class="border-t border-slate-700 font-semibold text-slate-300">
+                                <td colspan="5" class="py-2 pr-2 text-right text-slate-400">Total quotidien</td>
+                                <td id="totalDailyKwh" class="py-2 pl-1 text-right font-mono text-solar-amber">0.0</td>
+                                <td></td>
+                            </tr>
+                            <tr class="text-slate-400">
+                                <td colspan="5" class="pb-1 pr-2 text-right">Mensuel (×30)</td>
+                                <td id="totalMonthlyKwh" class="pb-1 pl-1 text-right font-mono text-green-400">0.0 kWh</td>
+                                <td></td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+                <button onclick="addApplianceRow()"
+                    class="mt-3 w-full flex items-center justify-center gap-2 border border-slate-700 hover:border-solar-blue text-slate-400 hover:text-solar-blue py-2 rounded-lg text-xs transition-colors">
+                    <i data-lucide="plus" class="w-3 h-3"></i>
+                    Ajouter un appareil
+                </button>
+            </section>
+
+            <!-- Section G: Rapport PDF -->
+            <section class="section-card">
+                <h2 class="flex items-center gap-2 text-sm font-semibold text-slate-300 mb-3">
+                    <i data-lucide="file-text" class="w-4 h-4 text-solar-blue"></i>
+                    Rapport Professionnel
+                </h2>
+                <div class="space-y-2 mb-3">
+                    <div>
+                        <label class="block text-xs text-slate-400 mb-1">Nom de l'entreprise</label>
+                        <input id="companyName" type="text" class="si-input" placeholder="SolarIntel Sénégal">
+                    </div>
+                    <div>
+                        <label class="block text-xs text-slate-400 mb-1">Titre du rapport</label>
+                        <input id="reportTitle" type="text" class="si-input" placeholder="Étude de dimensionnement PV">
+                    </div>
+                    <div>
+                        <label class="block text-xs text-slate-400 mb-1">Nom du client</label>
+                        <input id="clientName" type="text" class="si-input" placeholder="M. Diallo Ibrahim">
+                    </div>
+                </div>
+                <button id="btnReport" onclick="generateReport()"
+                    class="w-full flex items-center justify-center gap-2 bg-green-600 hover:bg-green-700 text-white font-semibold py-3 px-4 rounded-lg transition-colors">
+                    <i data-lucide="download" class="w-4 h-4"></i>
+                    Générer Rapport PDF
+                </button>
+                <div id="reportStatus" class="mt-2 text-xs text-center text-slate-500 hidden"></div>
+            </section>
+
+        </aside>
+
+        <!-- RIGHT PANEL: ArcGIS Map -->
+        <div class="flex-1 relative">
+            <div id="mapDiv"></div>
+
+            <!-- Basemap toggle -->
+            <div class="basemap-toggle">
+                <button class="basemap-btn active" id="btnSatellite" onclick="setBasemap('satellite')">Satellite</button>
+                <button class="basemap-btn" id="btnTopo" onclick="setBasemap('topo-vector')">Topo</button>
+            </div>
+
+            <!-- Drawing instruction overlay -->
+            <div id="drawHint" class="absolute top-4 left-1/2 -translate-x-1/2 bg-surface/90 backdrop-blur-sm border border-border-slate rounded-lg px-4 py-2 text-sm text-slate-300 flex items-center gap-2 z-10">
+                <i data-lucide="mouse-pointer-2" class="w-4 h-4 text-solar-blue"></i>
+                Utilisez l'outil polygone pour dessiner la toiture
+            </div>
+        </div>
+
+    </main>
+
+<script>
+// =========================================================================
+// PANEL CATALOG
+// =========================================================================
+const PANEL_CATALOG = {
+    "JA Solar": [
+        { model: "JAM72S30-545/MR", power: 545, width: 1134, height: 2278, efficiency: 21.1, tempCoeff: -0.350 },
+        { model: "JAM60S20-385/MR", power: 385, width: 1002, height: 1996, efficiency: 19.2, tempCoeff: -0.350 },
+        { model: "JAM78S30-600/MR", power: 600, width: 1134, height: 2465, efficiency: 21.5, tempCoeff: -0.340 },
+    ],
+    "Canadian Solar": [
+        { model: "CS6W-545MS", power: 545, width: 1134, height: 2266, efficiency: 21.2, tempCoeff: -0.340 },
+        { model: "CS3W-440MS", power: 440, width: 1048, height: 2108, efficiency: 19.9, tempCoeff: -0.340 },
+        { model: "CS7L-600MS", power: 600, width: 1134, height: 2384, efficiency: 22.2, tempCoeff: -0.340 },
+    ],
+    "Longi": [
+        { model: "LR5-72HPH-545M", power: 545, width: 1134, height: 2256, efficiency: 21.3, tempCoeff: -0.340 },
+        { model: "LR5-66HPH-500M", power: 500, width: 1134, height: 2094, efficiency: 20.7, tempCoeff: -0.350 },
+        { model: "LR7-72HGD-620M", power: 620, width: 1134, height: 2384, efficiency: 23.0, tempCoeff: -0.330 },
+    ],
+    "Trina Solar": [
+        { model: "TSM-545DEG19C.20", power: 545, width: 1134, height: 2278, efficiency: 21.1, tempCoeff: -0.340 },
+        { model: "TSM-400DEG15M.20", power: 400, width: 1048, height: 2015, efficiency: 19.0, tempCoeff: -0.350 },
+        { model: "TSM-600DEG21C.20", power: 600, width: 1134, height: 2384, efficiency: 22.0, tempCoeff: -0.330 },
+    ],
+};
+
+// =========================================================================
+// INVERTER CATALOG (GOODWE / GROWATT)
+// =========================================================================
+const INVERTER_CATALOG = {
+    "GOODWE": [
+        { model: "GW3600-EH",  power_kw: 3.6, phase: "Monophasé", type: "Hybride",  defaultPrice: 350000 },
+        { model: "GW5000-EH",  power_kw: 5.0, phase: "Monophasé", type: "Hybride",  defaultPrice: 450000 },
+        { model: "GW8000-DT",  power_kw: 8.0, phase: "Triphasé",  type: "Hybride",  defaultPrice: 620000 },
+        { model: "GW10000-DT", power_kw: 10.0, phase: "Triphasé", type: "Hybride",  defaultPrice: 750000 },
+        { model: "GW15000-DT", power_kw: 15.0, phase: "Triphasé", type: "Hybride",  defaultPrice: 950000 },
+        { model: "GW20KT",     power_kw: 20.0, phase: "Triphasé", type: "Réseau",   defaultPrice: 1150000 },
+    ],
+    "GROWATT": [
+        { model: "MIN 3600TL-XH",  power_kw: 3.6, phase: "Monophasé", type: "Hybride",         defaultPrice: 320000 },
+        { model: "SPF 5000 ES",    power_kw: 5.0, phase: "Monophasé", type: "Off-Grid/Hybride", defaultPrice: 420000 },
+        { model: "MIN 6000TL-XH",  power_kw: 6.0, phase: "Monophasé", type: "Hybride",         defaultPrice: 490000 },
+        { model: "SPF 10000T DVM", power_kw: 10.0, phase: "Triphasé", type: "Off-Grid/Hybride", defaultPrice: 720000 },
+        { model: "MID 15KTL3-X",   power_kw: 15.0, phase: "Triphasé", type: "Réseau",          defaultPrice: 900000 },
+        { model: "MID 20KTL3-X",   power_kw: 20.0, phase: "Triphasé", type: "Réseau",          defaultPrice: 1100000 },
+    ],
+};
+
+// =========================================================================
+// BATTERY CATALOG (UHOME)
+// =========================================================================
+const BATTERY_CATALOG = [
+    { model: "UHOME 5.0kWh",  capacity_kwh: 5.12,  voltage: 48, chemistry: "LiFePO4", cycles: 6000, defaultPrice: 900000 },
+    { model: "UHOME 10.0kWh", capacity_kwh: 10.24, voltage: 48, chemistry: "LiFePO4", cycles: 6000, defaultPrice: 1700000 },
+    { model: "UHOME 15.0kWh", capacity_kwh: 15.36, voltage: 48, chemistry: "LiFePO4", cycles: 6000, defaultPrice: 2400000 },
+    { model: "UHOME 20.0kWh", capacity_kwh: 20.48, voltage: 48, chemistry: "LiFePO4", cycles: 6000, defaultPrice: 3100000 },
+];
+
+// =========================================================================
+// APPLIANCE TABLE DATA
+// =========================================================================
+let applianceRows = [
+    { name: "Climatiseur 1.5CV", qty: 1, power: 1100, hoursDay: 0,  hoursNight: 8 },
+    { name: "Réfrigérateur",     qty: 1, power: 150,  hoursDay: 24, hoursNight: 0 },
+    { name: "Éclairage LED",     qty: 10, power: 10,  hoursDay: 2,  hoursNight: 5 },
+    { name: "Télévision",        qty: 1, power: 100,  hoursDay: 4,  hoursNight: 2 },
+    { name: "Chargeurs USB",     qty: 4, power: 10,   hoursDay: 2,  hoursNight: 1 },
+];
+
+// =========================================================================
+// APPLICATION STATE with Proxy
+// =========================================================================
+const _state = {
+    polygon: null,
+    polygonArea_m2: 0,
+    centroid: null,
+    panelBrand: "JA Solar",
+    panelModel: "JAM72S30-545/MR",
+    panelPower: 545,
+    panelWidth_mm: 1134,
+    panelHeight_mm: 2278,
+    panelEfficiency: 21.1,
+    tempCoeff: -0.350,
+    monthlyConsumption: 500,
+    annualConsumption: 6000,
+    electricity_price_kwh: 118,
+    annual_increase_pct: 3.5,
+    spacingH_cm: 2,
+    spacingV_cm: 5,
+    orientation: "portrait",
+    senelec_tariff: null,
+    panelCount: 0,
+    peakPower_kWc: 0,
+    annualProduction_kWh: 0,
+    coverageRate: 0,
+    annualSavings: 0,
+    paybackYears: 0,
+    lcoe: 0,
+    backendAvailable: false,
+};
+
+const STATE = new Proxy(_state, {
+    set(target, prop, value) {
+        target[prop] = value;
+        onStateChange(prop, value);
+        return true;
+    }
+});
+
+function updateState(prop, value) {
+    STATE[prop] = value;
+}
+
+// =========================================================================
+// STATE CHANGE HANDLER
+// =========================================================================
+function onStateChange(prop, value) {
+    if (prop === 'panelCount' || prop === 'peakPower_kWc') {
+        updateKPIs();
+    }
+    if (prop === 'polygon') {
+        const btn = document.getElementById('btnCalpinage');
+        const hint = document.getElementById('calpinageHint');
+        if (value) {
+            btn.disabled = false;
+            hint.textContent = 'Pret a generer le calpinage';
+            hint.classList.remove('text-slate-500');
+            hint.classList.add('text-solar-blue');
+        } else {
+            btn.disabled = true;
+            hint.textContent = 'Dessinez un polygone sur la carte pour activer le calpinage';
+            hint.classList.add('text-slate-500');
+            hint.classList.remove('text-solar-blue');
+            resetKPIs();
+        }
+    }
+    if (prop === 'polygonArea_m2') {
+        const el = document.getElementById('surfaceInfo');
+        const val = document.getElementById('surfaceValue');
+        if (value > 0) {
+            el.classList.remove('hidden');
+            val.textContent = value.toFixed(1);
+        } else {
+            el.classList.add('hidden');
+        }
+    }
+}
+
+// =========================================================================
+// KPI UPDATES
+// =========================================================================
+function updateKPIs() {
+    const count = STATE.panelCount;
+    const power = count * STATE.panelPower / 1000;
+    STATE.peakPower_kWc = power;
+
+    // Client-side estimate: 1650 kWh/kWc for Dakar
+    const clientProduction = power * 1650 * 0.9;
+    STATE.annualProduction_kWh = Math.round(clientProduction);
+
+    const annual = STATE.annualConsumption || 1;
+    STATE.coverageRate = Math.min(999, Math.round(clientProduction / annual * 100));
+
+    STATE.annualSavings = Math.round(clientProduction * STATE.electricity_price_kwh);
+
+    const totalCost = count * STATE.panelPower * 650;
+    STATE.paybackYears = STATE.annualSavings > 0 ? +(totalCost / STATE.annualSavings).toFixed(1) : 0;
+    STATE.lcoe = clientProduction > 0 ? +(totalCost / (clientProduction * 25 * 0.9)).toFixed(1) : 0;
+
+    // Update DOM
+    setKPI('kpiPanels', count || '—');
+    setKPI('kpiPower', power > 0 ? power.toFixed(2) : '—', 'kWc');
+    setKPI('kpiProduction', STATE.annualProduction_kWh > 0 ? numberFmt(STATE.annualProduction_kWh) : '—', 'kWh/an');
+    setKPI('kpiCoverage', STATE.coverageRate > 0 ? STATE.coverageRate : '—', '%');
+    setKPI('kpiSavings', STATE.annualSavings > 0 ? numberFmt(STATE.annualSavings) : '—', 'XOF');
+    setKPI('kpiPayback', STATE.paybackYears > 0 ? STATE.paybackYears : '—', 'ans');
+    setKPI('kpiLCOE', STATE.lcoe > 0 ? STATE.lcoe : '—', 'XOF/kWh');
+
+    // Update system cost (CAPEX)
+    updateSystemCost();
+    // Async backend call
+    if (count > 0) callBackend();
+}
+
+function resetKPIs() {
+    STATE.panelCount = 0;
+    STATE.peakPower_kWc = 0;
+    STATE.annualProduction_kWh = 0;
+    STATE.coverageRate = 0;
+    STATE.annualSavings = 0;
+    STATE.paybackYears = 0;
+    STATE.lcoe = 0;
+    ['kpiPanels','kpiPower','kpiProduction','kpiCoverage','kpiSavings','kpiPayback','kpiLCOE'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) {
+            const suffix = el.querySelector('span');
+            const suffixText = suffix ? suffix.outerHTML : '';
+            el.innerHTML = '—' + (suffixText ? ' ' + suffixText : '');
+        }
+    });
+}
+
+function setKPI(id, value, suffix) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const suffixHtml = suffix ? ` <span class="text-sm font-normal text-slate-400">${suffix}</span>` : '';
+    el.innerHTML = `${value}${suffixHtml}`;
+    // Flash animation
+    el.closest('.kpi-card')?.classList.add('highlight');
+    setTimeout(() => el.closest('.kpi-card')?.classList.remove('highlight'), 1500);
+}
+
+function numberFmt(n) {
+    return new Intl.NumberFormat('fr-FR').format(n);
+}
+
+// =========================================================================
+// PANEL BRAND/MODEL LOGIC
+// =========================================================================
+function populateModels(brand) {
+    const sel = document.getElementById('panelModel');
+    sel.innerHTML = '';
+    const panels = PANEL_CATALOG[brand] || [];
+    panels.forEach(p => {
+        const opt = document.createElement('option');
+        opt.value = p.model;
+        opt.textContent = `${p.model} — ${p.power}Wc`;
+        sel.appendChild(opt);
+    });
+    if (panels.length > 0) applyPanelSpecs(panels[0]);
+}
+
+function onBrandChange() {
+    const brand = document.getElementById('panelBrand').value;
+    STATE.panelBrand = brand;
+    populateModels(brand);
+}
+
+function onModelChange() {
+    const brand = document.getElementById('panelBrand').value;
+    const model = document.getElementById('panelModel').value;
+    const panels = PANEL_CATALOG[brand] || [];
+    const panel = panels.find(p => p.model === model);
+    if (panel) applyPanelSpecs(panel);
+}
+
+function applyPanelSpecs(panel) {
+    STATE.panelModel = panel.model;
+    STATE.panelPower = panel.power;
+    STATE.panelWidth_mm = panel.width;
+    STATE.panelHeight_mm = panel.height;
+    STATE.panelEfficiency = panel.efficiency;
+    STATE.tempCoeff = panel.tempCoeff;
+
+    const specsEl = document.getElementById('panelSpecs');
+    specsEl.innerHTML = `
+        <span class="spec-badge"><i data-lucide="zap" class="w-3 h-3"></i>${panel.power} Wc</span>
+        <span class="spec-badge"><i data-lucide="ruler" class="w-3 h-3"></i>${panel.width}x${panel.height} mm</span>
+        <span class="spec-badge"><i data-lucide="gauge" class="w-3 h-3"></i>${panel.efficiency}%</span>
+    `;
+    _safeCreateIcons();
+}
+
+function _safeCreateIcons() {
+    if (window.lucide && typeof lucide.createIcons === 'function') {
+        lucide.createIcons();
+    }
+}
+
+// =========================================================================
+// INVERTER FUNCTIONS
+// =========================================================================
+function onInverterBrandChange() {
+    const brand = document.getElementById('inverterBrand').value;
+    const sel = document.getElementById('inverterModel');
+    sel.innerHTML = '';
+    (INVERTER_CATALOG[brand] || []).forEach(inv => {
+        const opt = document.createElement('option');
+        opt.value = inv.model;
+        opt.textContent = `${inv.model} — ${inv.power_kw} kW ${inv.type}`;
+        sel.appendChild(opt);
+    });
+    const first = (INVERTER_CATALOG[brand] || [])[0];
+    if (first) applyInverterSpecs(first);
+    updateSystemCost();
+}
+
+function onInverterModelChange() {
+    const brand = document.getElementById('inverterBrand').value;
+    const model = document.getElementById('inverterModel').value;
+    const inv = (INVERTER_CATALOG[brand] || []).find(i => i.model === model);
+    if (inv) applyInverterSpecs(inv);
+    updateSystemCost();
+}
+
+function applyInverterSpecs(inv) {
+    if (!inv) return;
+    document.getElementById('inverterPrice').value = inv.defaultPrice;
+    const el = document.getElementById('inverterSpecs');
+    el.innerHTML = `
+        <span class="spec-badge"><i data-lucide="zap" class="w-3 h-3"></i>${inv.power_kw} kW</span>
+        <span class="spec-badge">${inv.phase}</span>
+        <span class="spec-badge">${inv.type}</span>
+    `;
+    _safeCreateIcons();
+}
+
+function onBatteryModelChange() {
+    const sel = document.getElementById('batteryModel').value;
+    const bat = BATTERY_CATALOG.find(b => b.model === sel);
+    const el = document.getElementById('batterySpecs');
+    if (bat) {
+        document.getElementById('batteryPrice').value = bat.defaultPrice;
+        el.innerHTML = `
+            <span class="spec-badge"><i data-lucide="battery-charging" class="w-3 h-3"></i>${bat.capacity_kwh} kWh</span>
+            <span class="spec-badge">${bat.chemistry}</span>
+            <span class="spec-badge">${bat.cycles.toLocaleString('fr-FR')} cycles</span>
+        `;
+        _safeCreateIcons();
+    } else {
+        el.innerHTML = '';
+    }
+    updateSystemCost();
+}
+
+function updateSystemCost() {
+    const panelCount = STATE.panelCount || 0;
+    const panelPower = STATE.panelPower || 545;
+    const capexPanels = panelCount * panelPower * 650;
+
+    const invQty   = +(document.getElementById('inverterQty')?.value   || 1);
+    const invPrice = +(document.getElementById('inverterPrice')?.value || 0);
+    const batQty   = +(document.getElementById('batteryQty')?.value    || 1);
+    const batPrice = +(document.getElementById('batteryPrice')?.value  || 0);
+    const batModel = document.getElementById('batteryModel')?.value    || '';
+
+    const capexInverter = invQty * invPrice;
+    const capexBattery  = batModel ? batQty * batPrice : 0;
+    const total = capexPanels + capexInverter + capexBattery;
+
+    const el = document.getElementById('capexTotal');
+    if (el) el.textContent = total > 0 ? numberFmt(Math.round(total)) + ' XOF' : '— XOF';
+}
+
+// =========================================================================
+// APPLIANCE TABLE
+// =========================================================================
+function renderApplianceTable() {
+    const tbody = document.getElementById('applianceTbody');
+    if (!tbody) return;
+    tbody.innerHTML = '';
+    let totalDaily = 0;
+
+    applianceRows.forEach((row, idx) => {
+        const kwh = (row.qty * row.power * (row.hoursDay + row.hoursNight)) / 1000;
+        totalDaily += kwh;
+        const tr = document.createElement('tr');
+        tr.className = 'border-b border-slate-800/80';
+        tr.innerHTML = `
+            <td class="py-1 pr-1">
+                <input type="text" value="${row.name.replace(/"/g, '&quot;')}" class="si-input text-xs py-0.5 px-1"
+                    oninput="applianceRows[${idx}].name=this.value">
+            </td>
+            <td class="py-1 px-1">
+                <input type="number" value="${row.qty}" min="1" class="si-input text-xs text-center py-0.5 px-1"
+                    oninput="applianceRows[${idx}].qty=+this.value;refreshApplianceTotals()">
+            </td>
+            <td class="py-1 px-1">
+                <input type="number" value="${row.power}" min="0" class="si-input text-xs text-center py-0.5 px-1"
+                    oninput="applianceRows[${idx}].power=+this.value;refreshApplianceTotals()">
+            </td>
+            <td class="py-1 px-1">
+                <input type="number" value="${row.hoursDay}" min="0" max="24" step="0.5" class="si-input text-xs text-center py-0.5 px-1"
+                    oninput="applianceRows[${idx}].hoursDay=+this.value;refreshApplianceTotals()">
+            </td>
+            <td class="py-1 px-1">
+                <input type="number" value="${row.hoursNight}" min="0" max="24" step="0.5" class="si-input text-xs text-center py-0.5 px-1"
+                    oninput="applianceRows[${idx}].hoursNight=+this.value;refreshApplianceTotals()">
+            </td>
+            <td class="py-1 pl-1 text-right font-mono text-slate-300">${kwh.toFixed(2)}</td>
+            <td class="py-1 pl-1">
+                <button onclick="removeApplianceRow(${idx})" class="text-slate-600 hover:text-red-400 transition-colors">
+                    <i data-lucide="x" class="w-3 h-3"></i>
+                </button>
+            </td>
+        `;
+        tbody.appendChild(tr);
+    });
+
+    _syncApplianceTotals(totalDaily);
+    _safeCreateIcons();
+}
+
+function refreshApplianceTotals() {
+    let totalDaily = 0;
+    applianceRows.forEach(row => {
+        totalDaily += (row.qty * row.power * (row.hoursDay + row.hoursNight)) / 1000;
+    });
+    _syncApplianceTotals(totalDaily);
+}
+
+function _syncApplianceTotals(totalDaily) {
+    const dailyEl   = document.getElementById('totalDailyKwh');
+    const monthlyEl = document.getElementById('totalMonthlyKwh');
+    if (dailyEl)   dailyEl.textContent   = totalDaily.toFixed(2);
+    if (monthlyEl) monthlyEl.textContent = (totalDaily * 30).toFixed(1) + ' kWh';
+
+    // Sync consumption fields from appliance table
+    const monthly = Math.round(totalDaily * 30);
+    if (monthly > 0) {
+        document.getElementById('monthlyConsumption').value = monthly;
+        document.getElementById('annualConsumption').value  = monthly * 12;
+        _state.monthlyConsumption = monthly;
+        _state.annualConsumption  = monthly * 12;
+    }
+}
+
+function addApplianceRow() {
+    applianceRows.push({ name: "Nouvel appareil", qty: 1, power: 100, hoursDay: 4, hoursNight: 0 });
+    renderApplianceTable();
+}
+
+function removeApplianceRow(idx) {
+    applianceRows.splice(idx, 1);
+    renderApplianceTable();
+}
+
+// =========================================================================
+// REPORT GENERATION
+// =========================================================================
+async function generateReport() {
+    const btn    = document.getElementById('btnReport');
+    const status = document.getElementById('reportStatus');
+
+    btn.disabled = true;
+    btn.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4"></i> Génération en cours...';
+    _safeCreateIcons();
+    status.classList.remove('hidden');
+    status.className = 'mt-2 text-xs text-center text-slate-400';
+    status.textContent = 'Simulation + agents IA en cours…';
+
+    const centroid  = STATE.centroid || { latitude: 14.6928, longitude: -17.4467 };
+    const senelecEl = document.getElementById('senelecTariff');
+
+    const payload = {
+        latitude:               centroid.latitude,
+        longitude:              centroid.longitude,
+        panel_count:            STATE.panelCount,
+        panel_power_wc:         STATE.panelPower,
+        panel_brand:            STATE.panelBrand,
+        panel_model:            STATE.panelModel,
+        temp_coeff_pmax:        STATE.tempCoeff,
+        electricity_price_kwh:  STATE.electricity_price_kwh,
+        annual_increase_pct:    STATE.annual_increase_pct,
+        senelec_tariff:         senelecEl?.value || null,
+        annual_consumption_kwh: STATE.annualConsumption || null,
+        // Équipements
+        inverter_brand:         document.getElementById('inverterBrand')?.value || 'GOODWE',
+        inverter_model:         document.getElementById('inverterModel')?.value || '',
+        inverter_qty:           +(document.getElementById('inverterQty')?.value   || 1),
+        inverter_price_xof:     +(document.getElementById('inverterPrice')?.value || 0),
+        battery_model:          document.getElementById('batteryModel')?.value   || '',
+        battery_qty:            +(document.getElementById('batteryQty')?.value    || 1),
+        battery_price_xof:      +(document.getElementById('batteryPrice')?.value  || 0),
+        // Bilan énergétique
+        appliances: applianceRows,
+        // Métadonnées rapport
+        company_name:  document.getElementById('companyName')?.value  || 'SolarIntel',
+        report_title:  document.getElementById('reportTitle')?.value  || 'Étude de dimensionnement PV',
+        client_name:   document.getElementById('clientName')?.value   || '',
+        // KPIs actuels
+        kpi_production_kwh: STATE.annualProduction_kWh,
+        kpi_coverage_pct:   STATE.coverageRate,
+        kpi_savings_xof:    STATE.annualSavings,
+        kpi_payback_years:  STATE.paybackYears,
+        kpi_lcoe:           STATE.lcoe,
+    };
+
+    try {
+        const res = await fetch(`${API_BASE}/api/report`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+            signal: AbortSignal.timeout(120000),
+        });
+
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({ detail: res.statusText }));
+            throw new Error(err.detail || 'Erreur serveur');
+        }
+
+        const blob = await res.blob();
+        const url  = URL.createObjectURL(blob);
+        const a    = document.createElement('a');
+        a.href     = url;
+        a.download = `rapport_solarintel_${new Date().toISOString().slice(0, 10)}.pdf`;
+        a.click();
+        URL.revokeObjectURL(url);
+
+        status.textContent  = '✓ Rapport généré avec succès !';
+        status.className    = 'mt-2 text-xs text-center text-green-400';
+    } catch (err) {
+        status.textContent = `Erreur : ${err.message}`;
+        status.className   = 'mt-2 text-xs text-center text-red-400';
+    } finally {
+        btn.disabled   = false;
+        btn.innerHTML  = '<i data-lucide="download" class="w-4 h-4"></i> Générer Rapport PDF';
+        _safeCreateIcons();
+        setTimeout(() => {
+            status.classList.add('hidden');
+            status.className = 'mt-2 text-xs text-center text-slate-500 hidden';
+        }, 6000);
+    }
+}
+
+// =========================================================================
+// CONSUMPTION BI-DIRECTIONAL SYNC
+// =========================================================================
+function onMonthlyChange() {
+    const val = +document.getElementById('monthlyConsumption').value;
+    STATE.monthlyConsumption = val;
+    STATE.annualConsumption = val * 12;
+    document.getElementById('annualConsumption').value = val * 12;
+}
+
+function onAnnualChange() {
+    const val = +document.getElementById('annualConsumption').value;
+    STATE.annualConsumption = val;
+    STATE.monthlyConsumption = Math.round(val / 12);
+    document.getElementById('monthlyConsumption').value = Math.round(val / 12);
+}
+
+// =========================================================================
+// BACKEND COMMUNICATION
+// =========================================================================
+const API_BASE = "http://localhost:8000";
+let backendCallTimeout = null;
+
+async function checkBackend() {
+    try {
+        const res = await fetch(`${API_BASE}/health`, { signal: AbortSignal.timeout(3000) });
+        if (res.ok) {
+            STATE.backendAvailable = true;
+            document.getElementById('apiStatus').className = 'status-dot online';
+            document.getElementById('apiStatusText').textContent = 'API en ligne';
+        }
+    } catch {
+        STATE.backendAvailable = false;
+        document.getElementById('apiStatus').className = 'status-dot offline';
+        document.getElementById('apiStatusText').textContent = 'API hors ligne';
+    }
+}
+
+function callBackend() {
+    clearTimeout(backendCallTimeout);
+    backendCallTimeout = setTimeout(_doCallBackend, 500); // debounce
+}
+
+async function _doCallBackend() {
+    if (STATE.panelCount <= 0) return;
+
+    const centroid = STATE.centroid || { latitude: 14.6928, longitude: -17.4467 };
+    const senelecEl = document.getElementById('senelecTariff');
+    const senelecVal = senelecEl && senelecEl.value ? senelecEl.value : null;
+    const payload = {
+        latitude: centroid.latitude,
+        longitude: centroid.longitude,
+        panel_count: STATE.panelCount,
+        panel_power_wc: STATE.panelPower,
+        electricity_price_kwh: STATE.electricity_price_kwh,
+        annual_increase_pct: STATE.annual_increase_pct,
+        senelec_tariff: senelecVal,
+        annual_consumption_kwh: STATE.annualConsumption || null,
+        cost_per_wc_xof: 650,
+        system_lifetime_years: 25,
+        degradation_pct_year: 0.5,
+        panel_brand: STATE.panelBrand,
+        panel_model: STATE.panelModel,
+        temp_coeff_pmax: STATE.tempCoeff,
+    };
+
+    try {
+        const res = await fetch(`${API_BASE}/api/simulate`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+            signal: AbortSignal.timeout(30000),
+        });
+
+        if (!res.ok) return;
+        const data = await res.json();
+
+        // Overwrite client estimates with backend data
+        const sim = data.simulation;
+        const econ = data.economics;
+
+        _state.annualProduction_kWh = Math.round(sim.annual_production_kwh);
+        const annual = STATE.annualConsumption || 1;
+        _state.coverageRate = Math.min(999, Math.round(sim.annual_production_kwh / annual * 100));
+        _state.annualSavings = Math.round(econ.annual_savings_year1_xof);
+        _state.paybackYears = econ.payback_years;
+        _state.lcoe = econ.lcoe_xof_kwh;
+
+        setKPI('kpiProduction', numberFmt(Math.round(sim.annual_production_kwh)), 'kWh/an');
+        setKPI('kpiCoverage', _state.coverageRate, '%');
+        setKPI('kpiSavings', numberFmt(_state.annualSavings), 'XOF');
+        setKPI('kpiPayback', econ.payback_years, 'ans');
+        setKPI('kpiLCOE', econ.lcoe_xof_kwh, 'XOF/kWh');
+
+        document.getElementById('apiStatus').className = 'status-dot online';
+        document.getElementById('apiStatusText').textContent = 'API en ligne';
+    } catch {
+        // Keep client-side estimates — no-op
+    }
+}
+
+// =========================================================================
+// BASEMAP TOGGLE
+// =========================================================================
+let mapInstance = null;
+
+function setBasemap(basemap) {
+    if (mapInstance) mapInstance.basemap = basemap;
+    document.getElementById('btnSatellite').classList.toggle('active', basemap === 'satellite');
+    document.getElementById('btnTopo').classList.toggle('active', basemap === 'topo-vector');
+}
+
+// =========================================================================
+// COORDINATE CONVERSION HELPERS
+// =========================================================================
+function metersToDegreesLat(meters, lat) {
+    return meters / 111320;
+}
+
+function metersToDegreesLon(meters, lat) {
+    return meters / (111320 * Math.cos(lat * Math.PI / 180));
+}
+
+// =========================================================================
+// ARCGIS MAP + SKETCH + CALPINAGE
+// =========================================================================
+let sketchLayer = null;
+let panelLayer = null;
+let mapView = null;
+let sketchWidget = null;
+let geometryEngineRef = null;
+let GraphicRef = null;
+let PolygonRef = null;
+
+require([
+    "esri/Map",
+    "esri/views/MapView",
+    "esri/widgets/Sketch",
+    "esri/geometry/geometryEngine",
+    "esri/layers/GraphicsLayer",
+    "esri/Graphic",
+    "esri/geometry/Polygon",
+    "esri/geometry/Point",
+], function(Map, MapView, Sketch, geometryEngine, GraphicsLayer, Graphic, Polygon, Point) {
+
+    geometryEngineRef = geometryEngine;
+    GraphicRef = Graphic;
+    PolygonRef = Polygon;
+
+    sketchLayer = new GraphicsLayer({ title: "Toiture" });
+    panelLayer = new GraphicsLayer({ title: "Panneaux" });
+
+    const map = new Map({
+        basemap: "satellite",
+        layers: [panelLayer, sketchLayer],
+    });
+    mapInstance = map;
+
+    mapView = new MapView({
+        container: "mapDiv",
+        map: map,
+        center: [-17.4467, 14.6928],
+        zoom: 18,
+        ui: { components: ["zoom", "compass"] },
+        constraints: { minZoom: 10 },
+    });
+
+    mapView.when(function() {
+        sketchWidget = new Sketch({
+            view: mapView,
+            layer: sketchLayer,
+            creationMode: "single",
+            availableCreateTools: ["polygon"],
+            defaultCreateOptions: { mode: "click" },
+            defaultUpdateOptions: { enableRotation: true, enableScaling: true },
+            visibleElements: {
+                createTools: { point: false, polyline: false, circle: false, rectangle: false },
+                selectionTools: { "lasso-selection": false, "rectangle-selection": false },
+                undoRedoMenu: true,
+            },
+        });
+        mapView.ui.add(sketchWidget, "top-right");
+
+        // Hide draw hint once user starts
+        sketchWidget.on("create", function(event) {
+            if (event.state === "start") {
+                document.getElementById('drawHint').style.display = 'none';
+            }
+            if (event.state === "complete") {
+                handlePolygonUpdate(event.graphic.geometry);
+            }
+        });
+
+        sketchWidget.on("update", function(event) {
+            if (event.state === "complete" && event.graphics.length > 0) {
+                handlePolygonUpdate(event.graphics[0].geometry);
+            }
+            if (event.state === "active" && event.toolEventInfo && event.toolEventInfo.type === "reshape-stop") {
+                handlePolygonUpdate(event.graphics[0].geometry);
+            }
+        });
+
+        sketchWidget.on("delete", function() {
+            panelLayer.removeAll();
+            STATE.polygon = null;
+            STATE.polygonArea_m2 = 0;
+            STATE.centroid = null;
+        });
+    });
+
+    function handlePolygonUpdate(polygon) {
+        const area = geometryEngine.geodesicArea(polygon, "square-meters");
+        const centroid = polygon.centroid;
+
+        STATE.polygon = polygon;
+        STATE.polygonArea_m2 = Math.abs(area);
+        STATE.centroid = { latitude: centroid.latitude, longitude: centroid.longitude };
+
+        // Auto-run calpinage on polygon complete/update
+        generateCalpinage();
+    }
+});
+
+// =========================================================================
+// CALPINAGE ALGORITHM
+// =========================================================================
+function generateCalpinage() {
+    if (!STATE.polygon || !geometryEngineRef || !GraphicRef) return;
+
+    const polygon = STATE.polygon;
+    panelLayer.removeAll();
+
+    // Panel dimensions in meters
+    let panelW_m, panelH_m;
+    if (STATE.orientation === "portrait") {
+        panelW_m = STATE.panelWidth_mm / 1000;
+        panelH_m = STATE.panelHeight_mm / 1000;
+    } else {
+        panelW_m = STATE.panelHeight_mm / 1000;
+        panelH_m = STATE.panelWidth_mm / 1000;
+    }
+
+    // Add spacing
+    const cellW_m = panelW_m + STATE.spacingH_cm / 100;
+    const cellH_m = panelH_m + STATE.spacingV_cm / 100;
+
+    // Get bounding box
+    const ext = polygon.extent;
+    const minLon = ext.xmin;
+    const maxLon = ext.xmax;
+    const minLat = ext.ymin;
+    const maxLat = ext.ymax;
+
+    const centerLat = (minLat + maxLat) / 2;
+
+    // Convert cell dimensions to degrees
+    const cellW_deg = metersToDegreesLon(cellW_m, centerLat);
+    const cellH_deg = metersToDegreesLat(cellH_m, centerLat);
+
+    // Panel dimension in degrees (without spacing, for drawing)
+    const panelW_deg = metersToDegreesLon(panelW_m, centerLat);
+    const panelH_deg = metersToDegreesLat(panelH_m, centerLat);
+
+    const panels = [];
+    const MAX_PANELS = 500;
+
+    // Generate grid
+    let lon = minLon + cellW_deg / 2;
+    while (lon + panelW_deg / 2 <= maxLon && panels.length < MAX_PANELS) {
+        let lat = minLat + cellH_deg / 2;
+        while (lat + panelH_deg / 2 <= maxLat && panels.length < MAX_PANELS) {
+            // Create panel rectangle
+            const x1 = lon - panelW_deg / 2;
+            const y1 = lat - panelH_deg / 2;
+            const x2 = lon + panelW_deg / 2;
+            const y2 = lat + panelH_deg / 2;
+
+            const panelRings = [[
+                [x1, y1], [x2, y1], [x2, y2], [x1, y2], [x1, y1]
+            ]];
+
+            const panelPoly = new PolygonRef({
+                rings: panelRings,
+                spatialReference: { wkid: 4326 },
+            });
+
+            if (geometryEngineRef.contains(polygon, panelPoly)) {
+                panels.push(panelPoly);
+            }
+
+            lat += cellH_deg;
+        }
+        lon += cellW_deg;
+    }
+
+    // Draw panels on map
+    const panelSymbol = {
+        type: "simple-fill",
+        color: [14, 165, 233, 0.25],
+        outline: {
+            color: [14, 165, 233, 0.8],
+            width: 0.75,
+        },
+    };
+
+    panels.forEach(function(panelGeom, idx) {
+        const g = new GraphicRef({
+            geometry: panelGeom,
+            symbol: panelSymbol,
+            attributes: { panelIndex: idx + 1 },
+        });
+        panelLayer.add(g);
+    });
+
+    // Update state → triggers KPI update
+    STATE.panelCount = panels.length;
+
+    // Update hint
+    const hint = document.getElementById('calpinageHint');
+    if (panels.length > 0) {
+        hint.textContent = `${panels.length} panneaux places (${STATE.polygonArea_m2.toFixed(1)} m²)`;
+        hint.classList.remove('text-slate-500');
+        hint.classList.add('text-green-400');
+    } else {
+        hint.textContent = 'Surface insuffisante pour placer des panneaux';
+        hint.classList.remove('text-green-400');
+        hint.classList.add('text-solar-amber');
+    }
+}
+
+// =========================================================================
+// INIT
+// =========================================================================
+document.addEventListener('DOMContentLoaded', function() {
+    populateModels("JA Solar");
+    onInverterBrandChange();   // populate inverter dropdowns
+    renderApplianceTable();    // render energy balance table
+    _safeCreateIcons();
+    checkBackend();
+    setInterval(checkBackend, 15000);
+});
+</script>
+
+</body>
+</html>

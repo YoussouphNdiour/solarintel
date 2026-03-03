@@ -1,0 +1,46 @@
+###############################################################################
+# SolarIntel — Render.com deployment configuration
+# Docs: https://render.com/docs/render-yaml-reference
+###############################################################################
+
+services:
+
+  # ─── FastAPI backend ────────────────────────────────────────────────────────
+  - type: web
+    name: solarintel-api
+    runtime: python
+    region: frankfurt          # closest to Dakar / West Africa
+    plan: starter              # free tier; upgrade to standard for production
+    rootDir: .
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn solarintel.api:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11"
+      - key: PORT
+        value: "8000"
+      # Optional: point to an external Ollama instance for CrewAI
+      # - key: OLLAMA_HOST
+      #   value: http://your-ollama-host:11434
+    autoDeploy: true
+
+  # ─── Static frontend (index.html served as a static site) ──────────────────
+  - type: web
+    name: solarintel-frontend
+    runtime: static
+    region: frankfurt
+    plan: starter
+    rootDir: .
+    buildCommand: echo "No build step required — pure HTML/JS"
+    staticPublishPath: .
+    headers:
+      - path: /*
+        name: Cache-Control
+        value: no-cache
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars: []
+    autoDeploy: true

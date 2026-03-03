@@ -1,0 +1,32 @@
+# Git & IDE
+.git
+.gitignore
+.vscode
+.idea
+
+# Python cache
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info
+dist/
+build/
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# Generated reports (large binary files)
+rapports/
+*.pdf
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Dev docs
+docs/
+*.md
