@@ -883,6 +883,7 @@ function updateState(prop, value) {
 // =========================================================================
 // MAP INTERACTION STATE
 // =========================================================================
+let _inUpdateKPIs = false;  // recursion guard: updateKPIs ↔ updateSystemCost
 let mapMode = 'draw-zone';                 // 'draw-zone'|'add-panel'|'select'|'delete'
 let panelHistory = [];                     // [{action:'add'|'delete'|'bulk', graphics:[]}]
 let selectedPanelGraphic = null;
@@ -895,6 +896,11 @@ function onStateChange(prop, value) {
     if (prop === 'panelCount' || prop === 'peakPower_kWc') {
         updateKPIs();
         updatePanelBadge();
+    }
+    // Consommation ou prix électricité changés → recalcul complet
+    if ((prop === 'annualConsumption' || prop === 'monthlyConsumption' ||
+         prop === 'electricity_price_kwh' || prop === 'installType') && STATE.panelCount > 0) {
+        updateKPIs();
     }
     if (prop === 'panelCount' || prop === 'polygon' || prop === 'annualProduction_kWh') {
         updateWorkflowSteps();
@@ -931,6 +937,8 @@ function onStateChange(prop, value) {
 // KPI UPDATES
 // =========================================================================
 function updateKPIs() {
+    if (_inUpdateKPIs) return;
+    _inUpdateKPIs = true;
     const count = STATE.panelCount;
     const power = count * STATE.panelPower / 1000;   // kWc
     _state.peakPower_kWc = power;  // bypass proxy — évite la récursion
@@ -988,6 +996,7 @@ function updateKPIs() {
 
     // Appel backend (pvlib + Senelec) pour affiner la simulation
     if (count > 0) callBackend();
+    _inUpdateKPIs = false;
 }
 
 function resetKPIs() {
@@ -1166,6 +1175,20 @@ function updateSystemCost() {
     _s('capexBattery',  fmt(capexBattery));
     _s('capexInstall',  fmt(capexInstall) + (installPct > 0 ? ' (' + Math.round(installPct*100) + '%)' : ''));
     _s('capexTotal',    total > 0 ? numberFmt(Math.round(total)) + ' XOF' : '— XOF');
+
+    // Recalculer payback + LCOE à partir du nouveau CAPEX (sans re-entrer dans updateKPIs)
+    if (!_inUpdateKPIs && STATE.panelCount > 0 && total > 0) {
+        const savings = _state.annualSavings || STATE.annualSavings || 0;
+        _state.paybackYears = savings > 0 ? +(total / savings).toFixed(1) : 0;
+
+        const prodAnnuelle = (_state.peakPower_kWc || 0) * 1700;
+        let lifetimeProd = 0;
+        for (let y = 1; y <= 25; y++) lifetimeProd += prodAnnuelle * Math.pow(1 - 0.005, y);
+        _state.lcoe = lifetimeProd > 0 ? +(total / lifetimeProd).toFixed(1) : 0;
+
+        setKPI('kpiPayback', _state.paybackYears > 0 ? _state.paybackYears : '—', 'ans');
+        setKPI('kpiLCOE',    _state.lcoe > 0 ? _state.lcoe : '—', 'XOF/kWh');
+    }
 }
 
 // =========================================================================
@@ -1272,6 +1295,10 @@ function _syncApplianceTotals(totalDaily, totalDayKwh, totalNightKwh) {
         document.getElementById('annualConsumption').value  = monthly * 12;
         _state.monthlyConsumption = monthly;
         _state.annualConsumption  = monthly * 12;
+        // Recalculer les KPIs si des panneaux existent déjà
+        if (STATE.panelCount > 0) {
+            updateKPIs();
+        }
     }
 }
 
