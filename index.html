@@ -500,8 +500,8 @@
                     <p class="text-xs text-slate-500 uppercase tracking-wide mb-2">Panneaux solaires</p>
                     <div class="grid grid-cols-2 gap-2">
                         <div>
-                            <label class="block text-xs text-slate-400 mb-1">Prix unitaire (XOF/Wc)</label>
-                            <input id="panelPriceWc" type="number" class="si-input" value="650" min="0"
+                            <label class="block text-xs text-slate-400 mb-1">Prix unitaire (XOF/panneau)</label>
+                            <input id="panelPriceWc" type="number" class="si-input" value="350000" min="0"
                                    oninput="updateSystemCost()">
                         </div>
                         <div>
@@ -961,7 +961,7 @@ function updateKPIs() {
     // ── CAPEX total (panneaux + onduleur + batterie + frais) ───────────
     const totalCost = _state.capexTotal > 0
         ? _state.capexTotal
-        : count * STATE.panelPower * 650 * 1.15;  // fallback : 650 XOF/Wc + 15%
+        : count * (+(document.getElementById('panelPriceWc')?.value || 350000)) * 1.15; // fallback : prix panneau + 15%
 
     // ── Retour sur investissement ──────────────────────────────────────
     STATE.paybackYears = STATE.annualSavings > 0
@@ -1132,12 +1132,14 @@ function onBatteryModelChange() {
 }
 
 function updateSystemCost() {
-    const panelCount  = STATE.panelCount || 0;
-    const panelPower  = STATE.panelPower || 545;
-    const pricePerWc  = +(document.getElementById('panelPriceWc')?.value  || 650);
-    const installPct  = +(document.getElementById('installPct')?.value    || 15) / 100;
+    const panelCount    = STATE.panelCount || 0;
+    const panelPower    = STATE.panelPower || 545;
+    const pricePerPanel = +(document.getElementById('panelPriceWc')?.value || 350000);
+    const installPct    = +(document.getElementById('installPct')?.value   || 15) / 100;
 
-    const capexPanels = panelCount * panelPower * pricePerWc;
+    const capexPanels = panelCount * pricePerPanel;
+    // Convert to XOF/Wc for backend compatibility (stored internally)
+    const pricePerWc = panelPower > 0 ? pricePerPanel / panelPower : 0;
 
     const invQty      = +(document.getElementById('inverterQty')?.value   || 1);
     const invPrice    = +(document.getElementById('inverterPrice')?.value  || 0);
@@ -1321,9 +1323,9 @@ async function generateReport() {
         battery_qty:            +(document.getElementById('batteryQty')?.value    || 1),
         battery_price_xof:      +(document.getElementById('batteryPrice')?.value  || 0),
         // CAPEX détaillé
-        panel_price_xof_wc:     +(document.getElementById('panelPriceWc')?.value  || 650),
+        panel_price_xof_wc:     (+(document.getElementById('panelPriceWc')?.value || 350000)) / (STATE.panelPower || 545),
         install_pct:            +(document.getElementById('installPct')?.value    || 15),
-        capex_panels_xof:       Math.round((STATE.panelCount||0)*(STATE.panelPower||545)*(+(document.getElementById('panelPriceWc')?.value||650))),
+        capex_panels_xof:       Math.round((STATE.panelCount||0)*(+(document.getElementById('panelPriceWc')?.value||350000))),
         capex_total_xof:        _state.capexTotal || 0,
         install_type:           _state.installType || 'autoconsommation',
         // Bilan énergétique
@@ -1465,7 +1467,7 @@ async function _doCallBackend() {
         annual_increase_pct: STATE.annual_increase_pct,
         senelec_tariff: senelecVal,
         annual_consumption_kwh: STATE.annualConsumption || null,
-        cost_per_wc_xof: 650,
+        cost_per_wc_xof: (+(document.getElementById('panelPriceWc')?.value || 350000)) / (STATE.panelPower || 545),
         system_lifetime_years: 25,
         degradation_pct_year: 0.5,
         panel_brand: STATE.panelBrand,
@@ -1722,7 +1724,17 @@ function generateCalpinage() {
     const panelH_deg = metersToDegreesLat(panelH_m, centerLat);
 
     const panels = [];
-    const MAX_PANELS = 500;
+
+    // Dynamic panel cap: enough to cover consumption × 1.5 safety, min 100, max 5000
+    const SPECIFIC_YIELD = 1700; // kWh/kWc/year (Dakar)
+    const annualKwh = STATE.annualConsumption || 0;
+    const selfUse   = _state.installType === 'autonome' ? 1.0
+                    : _state.installType === 'hybride'  ? 0.85 : 0.70;
+    const panelPwr_kWc = (STATE.panelPower || 545) / 1000;
+    const neededForCoverage = annualKwh > 0
+        ? Math.ceil((annualKwh / selfUse) / SPECIFIC_YIELD / panelPwr_kWc * 1.5)
+        : 2000;
+    const MAX_PANELS = Math.min(Math.max(neededForCoverage, 100), 5000);
 
     // Generate grid
     let lon = minLon + cellW_deg / 2;
