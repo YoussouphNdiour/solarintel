@@ -182,6 +182,94 @@
         }
         .status-dot.online { background: #22C55E; }
         .status-dot.offline { background: #EF4444; }
+
+        /* ── MAP TOOLBAR ───────────────────────────────────────── */
+        .map-toolbar {
+            position: absolute; top: 1rem; left: 1rem; z-index: 10;
+            display: flex; flex-direction: column; gap: 0.2rem;
+            background: rgba(15,23,42,0.92); backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid #334155; border-radius: 0.75rem;
+            padding: 0.35rem; box-shadow: 0 4px 20px rgba(0,0,0,0.45);
+        }
+        .map-tool-btn {
+            display: flex; align-items: center; gap: 0.45rem;
+            padding: 0.42rem 0.7rem; border-radius: 0.45rem;
+            font-size: 0.7rem; font-weight: 500; cursor: pointer;
+            border: 1px solid transparent; color: #94A3B8;
+            background: transparent; transition: all 0.15s;
+            white-space: nowrap; line-height: 1.2; text-align: left;
+        }
+        .map-tool-btn:hover { background: rgba(255,255,255,0.06); color: #F8FAFC; }
+        .map-tool-btn.active { background: rgba(14,165,233,0.15); color: #38BDF8; border-color: rgba(14,165,233,0.35); }
+        .map-tool-btn.danger:hover { color: #F87171; background: rgba(239,68,68,0.1); }
+        .map-tool-btn.danger.active { color: #F87171; background: rgba(239,68,68,0.15); border-color: rgba(239,68,68,0.35); }
+        .map-tool-btn:disabled { opacity: 0.3; cursor: not-allowed; pointer-events: none; }
+        .toolbar-sep { height: 1px; background: #1E293B; margin: 0.1rem 0.25rem; }
+
+        /* ── PANEL BADGE ───────────────────────────────────────── */
+        .panel-badge {
+            position: absolute; bottom: 3.75rem; left: 1rem; z-index: 10;
+            background: rgba(15,23,42,0.92); backdrop-filter: blur(12px);
+            border: 1px solid #334155; border-radius: 0.5rem;
+            padding: 0.35rem 0.75rem; font-size: 0.7rem; color: #94A3B8;
+            display: none; align-items: center; gap: 0.4rem;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.35);
+        }
+        .panel-badge.visible { display: flex; }
+        .badge-n { font-family:'JetBrains Mono',monospace; font-weight:700; font-size:1rem; color:#38BDF8; }
+
+        /* ── MODE INDICATOR ────────────────────────────────────── */
+        .map-mode-bar {
+            position: absolute; bottom: 3.75rem; left: 50%;
+            transform: translateX(-50%); z-index: 10;
+            background: rgba(15,23,42,0.92); backdrop-filter: blur(12px);
+            border: 1px solid #334155; border-radius: 9999px;
+            padding: 0.35rem 1rem; font-size: 0.7rem; color: #94A3B8;
+            display: none; align-items: center; gap: 0.45rem;
+            pointer-events: none; white-space: nowrap;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.35);
+        }
+        .map-mode-bar.visible { display: flex; }
+        .mode-pip { width:6px; height:6px; border-radius:50%; background:#38BDF8; flex-shrink:0; animation:pip 1.5s ease infinite; }
+        .mode-pip.red { background:#F87171; }
+        @keyframes pip { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.5;transform:scale(1.5)} }
+
+        /* ── PANEL POPUP ───────────────────────────────────────── */
+        .p-popup {
+            position: absolute; z-index: 25;
+            background: #0C1728; border: 1px solid #475569;
+            border-radius: 0.75rem; padding: 0.875rem 1rem;
+            min-width: 190px; box-shadow: 0 8px 28px rgba(0,0,0,0.6);
+            display: none;
+        }
+        .p-popup.visible { display: block; animation: ppIn 0.15s ease; }
+        @keyframes ppIn { from{opacity:0;transform:scale(0.93) translateY(6px)} to{opacity:1;transform:scale(1) translateY(0)} }
+        .pp-title { font-size:0.8rem; font-weight:600; color:#F1F5F9; display:flex; align-items:center; gap:0.375rem; margin-bottom:0.375rem; }
+        .pp-meta { font-size:0.68rem; color:#475569; font-family:'JetBrains Mono',monospace; margin-bottom:0.625rem; line-height:1.5; }
+        .pp-actions { display:flex; gap:0.35rem; }
+        .pp-btn { flex:1; padding:0.375rem 0.5rem; border-radius:0.375rem; font-size:0.68rem; font-weight:500; cursor:pointer; border:1px solid transparent; transition:all 0.15s; display:flex; align-items:center; justify-content:center; gap:0.25rem; }
+        .pp-del { background:rgba(239,68,68,0.1); color:#F87171; border-color:rgba(239,68,68,0.2); }
+        .pp-del:hover { background:rgba(239,68,68,0.22); }
+        .pp-close { background:rgba(100,116,139,0.1); color:#94A3B8; border-color:rgba(100,116,139,0.2); }
+        .pp-close:hover { background:rgba(100,116,139,0.2); color:#F8FAFC; }
+
+        /* ── WORKFLOW BAR ──────────────────────────────────────── */
+        .wf-bar {
+            display: flex; align-items: center;
+            padding: 0.55rem 1rem;
+            background: rgba(15,23,42,0.7);
+            border-bottom: 1px solid #1E293B;
+            flex-shrink: 0; overflow-x: auto; gap: 0;
+        }
+        .wf-step { display:flex; align-items:center; gap:0.375rem; flex-shrink:0; }
+        .wf-n { width:20px; height:20px; border-radius:50%; border:1.5px solid #334155; color:#475569; font-size:0.6rem; font-weight:700; display:flex; align-items:center; justify-content:center; transition:all 0.3s; flex-shrink:0; }
+        .wf-n.act { border-color:#0EA5E9; background:rgba(14,165,233,0.12); color:#38BDF8; }
+        .wf-n.done { border-color:#22C55E; background:rgba(34,197,94,0.12); color:#4ADE80; }
+        .wf-lbl { font-size:0.65rem; font-weight:500; color:#475569; transition:color 0.3s; white-space:nowrap; }
+        .wf-lbl.act { color:#38BDF8; }
+        .wf-lbl.done { color:#4ADE80; }
+        .wf-arr { color:#334155; font-size:0.6rem; padding:0 0.35rem; flex-shrink:0; }
     </style>
 </head>
 
@@ -219,7 +307,33 @@
     <main class="flex flex-col lg:flex-row" style="height: calc(100vh - 57px);">
 
         <!-- LEFT PANEL: Form + Results -->
-        <aside class="w-full lg:w-[480px] xl:w-[520px] overflow-y-auto p-4 space-y-4 flex-shrink-0 border-r border-border-slate">
+        <aside class="w-full lg:w-[480px] xl:w-[520px] flex-shrink-0 border-r border-border-slate flex flex-col">
+
+            <!-- Workflow progress bar (sticky) -->
+            <div class="wf-bar">
+                <div class="wf-step">
+                    <div class="wf-n act" id="wfN1">1</div>
+                    <span class="wf-lbl act" id="wfL1">Zone toiture</span>
+                </div>
+                <span class="wf-arr">›</span>
+                <div class="wf-step">
+                    <div class="wf-n" id="wfN2">2</div>
+                    <span class="wf-lbl" id="wfL2">Panneaux</span>
+                </div>
+                <span class="wf-arr">›</span>
+                <div class="wf-step">
+                    <div class="wf-n" id="wfN3">3</div>
+                    <span class="wf-lbl" id="wfL3">Équipements</span>
+                </div>
+                <span class="wf-arr">›</span>
+                <div class="wf-step">
+                    <div class="wf-n" id="wfN4">4</div>
+                    <span class="wf-lbl" id="wfL4">Résultats</span>
+                </div>
+            </div>
+
+            <!-- Scrollable content -->
+            <div class="overflow-y-auto p-4 space-y-4 flex-1">
 
             <!-- Section A: Configuration Panneau -->
             <section class="section-card">
@@ -559,11 +673,71 @@
                 <div id="reportStatus" class="mt-2 text-xs text-center text-slate-500 hidden"></div>
             </section>
 
+            </div><!-- /scrollable-content -->
         </aside>
 
         <!-- RIGHT PANEL: ArcGIS Map -->
         <div class="flex-1 relative">
             <div id="mapDiv"></div>
+
+            <!-- Map Toolbar (top-left) -->
+            <div class="map-toolbar" id="mapToolbar">
+                <button class="map-tool-btn active" id="toolDrawZone" onclick="setMapMode('draw-zone')" title="Dessiner / modifier la zone toiture">
+                    <i data-lucide="pen-tool" class="w-3.5 h-3.5"></i>
+                    Zone
+                </button>
+                <div class="toolbar-sep"></div>
+                <button class="map-tool-btn" id="toolAddPanel" onclick="setMapMode('add-panel')" title="Cliquer sur la carte pour ajouter un panneau">
+                    <i data-lucide="plus-square" class="w-3.5 h-3.5"></i>
+                    Ajouter
+                </button>
+                <button class="map-tool-btn" id="toolSelect" onclick="setMapMode('select')" title="Cliquer sur un panneau pour le sélectionner">
+                    <i data-lucide="mouse-pointer-2" class="w-3.5 h-3.5"></i>
+                    Sélect.
+                </button>
+                <button class="map-tool-btn danger" id="toolDelete" onclick="setMapMode('delete')" title="Cliquer sur un panneau pour le supprimer">
+                    <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                    Suppr.
+                </button>
+                <div class="toolbar-sep"></div>
+                <button class="map-tool-btn" id="toolUndo" onclick="undoLastPanel()" title="Annuler la dernière action" disabled>
+                    <i data-lucide="undo-2" class="w-3.5 h-3.5"></i>
+                    Annuler
+                </button>
+                <button class="map-tool-btn danger" id="toolClear" onclick="clearAllPanels()" title="Effacer tous les panneaux" disabled>
+                    <i data-lucide="x-circle" class="w-3.5 h-3.5"></i>
+                    Tout effacer
+                </button>
+            </div>
+
+            <!-- Panel count badge (bottom-left) -->
+            <div class="panel-badge" id="panelBadge">
+                <i data-lucide="layout-grid" class="w-3.5 h-3.5" style="color:#38BDF8;flex-shrink:0"></i>
+                <span class="badge-n" id="badgeN">0</span>
+                <span>panneaux</span>
+                <span id="badgePwr" class="text-xs ml-1" style="color:#475569"></span>
+            </div>
+
+            <!-- Mode indicator (bottom-center) -->
+            <div class="map-mode-bar" id="modeBar">
+                <span class="mode-pip" id="modePip"></span>
+                <span id="modeBarText"></span>
+            </div>
+
+            <!-- Panel popup -->
+            <div class="p-popup" id="panelPopup">
+                <div class="pp-title">
+                    <i data-lucide="square" class="w-3.5 h-3.5" style="color:#38BDF8"></i>
+                    <span id="ppTitle">Panneau</span>
+                </div>
+                <div class="pp-meta" id="ppMeta"></div>
+                <div class="pp-actions">
+                    <button class="pp-btn pp-del" onclick="deleteSelectedPanel()">
+                        <i data-lucide="trash-2" class="w-3 h-3"></i> Supprimer
+                    </button>
+                    <button class="pp-btn pp-close" onclick="closePanelPopup()">✕ Fermer</button>
+                </div>
+            </div>
 
             <!-- Basemap toggle -->
             <div class="basemap-toggle">
@@ -571,10 +745,10 @@
                 <button class="basemap-btn" id="btnTopo" onclick="setBasemap('topo-vector')">Topo</button>
             </div>
 
-            <!-- Drawing instruction overlay -->
-            <div id="drawHint" class="absolute top-4 left-1/2 -translate-x-1/2 bg-surface/90 backdrop-blur-sm border border-border-slate rounded-lg px-4 py-2 text-sm text-slate-300 flex items-center gap-2 z-10">
-                <i data-lucide="mouse-pointer-2" class="w-4 h-4 text-solar-blue"></i>
-                Utilisez l'outil polygone pour dessiner la toiture
+            <!-- Drawing hint overlay -->
+            <div id="drawHint" class="absolute top-4 left-1/2 -translate-x-1/2 bg-surface/90 backdrop-blur-sm border border-border-slate rounded-lg px-4 py-2 text-xs text-slate-300 flex items-center gap-2 z-10" style="pointer-events:none;">
+                <i data-lucide="mouse-pointer-2" class="w-3.5 h-3.5 text-solar-blue flex-shrink-0"></i>
+                <span id="drawHintText">Utilisez l'outil polygone (barre droite) pour dessiner la toiture</span>
             </div>
         </div>
 
@@ -707,11 +881,23 @@ function updateState(prop, value) {
 }
 
 // =========================================================================
+// MAP INTERACTION STATE
+// =========================================================================
+let mapMode = 'draw-zone';                 // 'draw-zone'|'add-panel'|'select'|'delete'
+let panelHistory = [];                     // [{action:'add'|'delete'|'bulk', graphics:[]}]
+let selectedPanelGraphic = null;
+let webMercatorUtilsRef = null;            // set inside require() callback
+
+// =========================================================================
 // STATE CHANGE HANDLER
 // =========================================================================
 function onStateChange(prop, value) {
     if (prop === 'panelCount' || prop === 'peakPower_kWc') {
         updateKPIs();
+        updatePanelBadge();
+    }
+    if (prop === 'panelCount' || prop === 'polygon' || prop === 'annualProduction_kWh') {
+        updateWorkflowSteps();
     }
     if (prop === 'polygon') {
         const btn = document.getElementById('btnCalpinage');
@@ -1314,6 +1500,7 @@ async function _doCallBackend() {
         setKPI('kpiSavings', numberFmt(_state.annualSavings), 'XOF');
         setKPI('kpiPayback', econ.payback_years, 'ans');
         setKPI('kpiLCOE', econ.lcoe_xof_kwh, 'XOF/kWh');
+        updateWorkflowSteps();  // step 4 becomes active after backend results
 
         document.getElementById('apiStatus').className = 'status-dot online';
         document.getElementById('apiStatusText').textContent = 'API en ligne';
@@ -1370,6 +1557,7 @@ require([
     geometryEngineRef = geometryEngine;
     GraphicRef = Graphic;
     PolygonRef = Polygon;
+    webMercatorUtilsRef = webMercatorUtils;
 
     sketchLayer = new GraphicsLayer({ title: "Toiture" });
     panelLayer = new GraphicsLayer({ title: "Panneaux" });
@@ -1405,13 +1593,19 @@ require([
         });
         mapView.ui.add(sketchWidget, "top-right");
 
-        // Hide draw hint once user starts
+        // Hide draw hint once user starts drawing
         sketchWidget.on("create", function(event) {
             if (event.state === "start") {
-                document.getElementById('drawHint').style.display = 'none';
+                const h = document.getElementById('drawHint');
+                if (h) h.style.display = 'none';
             }
             if (event.state === "complete") {
                 handlePolygonUpdate(event.graphic.geometry);
+                // Enable add/select/delete tools
+                ['toolAddPanel','toolSelect','toolDelete'].forEach(function(id) {
+                    const el = document.getElementById(id);
+                    if (el) el.disabled = false;
+                });
             }
         });
 
@@ -1426,10 +1620,43 @@ require([
 
         sketchWidget.on("delete", function() {
             panelLayer.removeAll();
+            panelHistory = [];
+            _setUndoEnabled(false);
             STATE.polygon = null;
             STATE.polygonArea_m2 = 0;
             STATE.centroid = null;
+            document.getElementById('toolClear').disabled = true;
         });
+
+        // ── Custom panel management click handler ──────────────────
+        mapView.on("click", async function(event) {
+            if (mapMode === 'draw-zone') return;
+
+            if (mapMode === 'add-panel') {
+                if (sketchWidget) sketchWidget.cancel();
+                addPanelAt(event.mapPoint);
+                return;
+            }
+
+            if (mapMode === 'select' || mapMode === 'delete') {
+                if (sketchWidget) sketchWidget.cancel();
+                closePanelPopup();
+                const hitResult = await mapView.hitTest(event);
+                const hit = hitResult.results.find(function(r) {
+                    return r.graphic && r.graphic.layer === panelLayer;
+                });
+                if (hit) {
+                    if (mapMode === 'delete') {
+                        deletePanel(hit.graphic);
+                    } else {
+                        showPanelPopup(hit.graphic, event);
+                    }
+                }
+            }
+        });
+
+        // Close popup on map drag/zoom
+        mapView.on("drag", function() { closePanelPopup(); });
     });
 
     function handlePolygonUpdate(polygon) {
@@ -1460,6 +1687,8 @@ function generateCalpinage() {
 
     const polygon = STATE.polygon;
     panelLayer.removeAll();
+    panelHistory = [];
+    _setUndoEnabled(false);
 
     // Panel dimensions in meters
     let panelW_m, panelH_m;
@@ -1631,17 +1860,258 @@ function suggestEquipment(panelCount) {
 }
 
 // =========================================================================
+// MAP MODE MANAGEMENT
+// =========================================================================
+function setMapMode(mode) {
+    mapMode = mode;
+    closePanelPopup();
+
+    // Reset toolbar button states
+    ['toolDrawZone','toolAddPanel','toolSelect','toolDelete'].forEach(function(id) {
+        const el = document.getElementById(id);
+        if (el) el.classList.remove('active');
+    });
+    const modeToTool = { 'draw-zone':'toolDrawZone', 'add-panel':'toolAddPanel', 'select':'toolSelect', 'delete':'toolDelete' };
+    const activeId = modeToTool[mode];
+    if (activeId) { const el = document.getElementById(activeId); if (el) el.classList.add('active'); }
+
+    // Mode indicator bar
+    const bar = document.getElementById('modeBar');
+    const pip = document.getElementById('modePip');
+    const txt = document.getElementById('modeBarText');
+    const labels = {
+        'draw-zone': null,
+        'add-panel': 'Mode ajout — cliquez sur la toiture pour placer un panneau',
+        'select':    'Mode sélection — cliquez sur un panneau pour le modifier',
+        'delete':    'Mode suppression — cliquez sur un panneau pour le supprimer',
+    };
+    const label = labels[mode];
+    if (label) {
+        txt.textContent = label;
+        pip.classList.toggle('red', mode === 'delete');
+        bar.classList.add('visible');
+    } else {
+        bar.classList.remove('visible');
+    }
+
+    // Draw hint update
+    const hintMap = {
+        'draw-zone': 'Utilisez l\'outil polygone (barre droite) pour dessiner la toiture',
+        'add-panel': 'Cliquez sur la toiture pour ajouter un panneau solaire',
+        'select':    'Cliquez sur un panneau pour voir ses infos et le supprimer',
+        'delete':    'Cliquez sur un panneau pour le supprimer de l\'installation',
+    };
+    const hintEl = document.getElementById('drawHintText');
+    if (hintEl) hintEl.textContent = hintMap[mode] || '';
+    const drawHint = document.getElementById('drawHint');
+    if (drawHint) drawHint.style.display = 'flex';
+
+    // Map cursor
+    if (mapView && mapView.container) {
+        if (mode === 'add-panel') mapView.container.style.cursor = 'crosshair';
+        else if (mode === 'delete') mapView.container.style.cursor = 'pointer';
+        else mapView.container.style.cursor = '';
+    }
+
+    // Cancel any active sketch when leaving draw-zone
+    if (mode !== 'draw-zone' && sketchWidget) sketchWidget.cancel();
+
+    _safeCreateIcons();
+}
+
+// =========================================================================
+// ADD PANEL AT CLICK POINT
+// =========================================================================
+function addPanelAt(mapPoint) {
+    if (!GraphicRef || !PolygonRef || !webMercatorUtilsRef) return;
+
+    // Convert click (WebMercator) → WGS84
+    const geo = webMercatorUtilsRef.webMercatorToGeographic(mapPoint);
+    const lon = geo.x, lat = geo.y;
+
+    let panelW_m, panelH_m;
+    if (STATE.orientation === 'portrait') {
+        panelW_m = STATE.panelWidth_mm / 1000;
+        panelH_m = STATE.panelHeight_mm / 1000;
+    } else {
+        panelW_m = STATE.panelHeight_mm / 1000;
+        panelH_m = STATE.panelWidth_mm / 1000;
+    }
+
+    const pw = metersToDegreesLon(panelW_m, lat);
+    const ph = metersToDegreesLat(panelH_m, lat);
+
+    const panelPoly = new PolygonRef({
+        rings: [[[lon-pw/2,lat-ph/2],[lon+pw/2,lat-ph/2],[lon+pw/2,lat+ph/2],[lon-pw/2,lat+ph/2],[lon-pw/2,lat-ph/2]]],
+        spatialReference: { wkid: 4326 },
+    });
+
+    const idx = panelLayer.graphics.length + 1;
+    const g = new GraphicRef({
+        geometry: panelPoly,
+        symbol: { type:'simple-fill', color:[14,165,233,0.25], outline:{color:[14,165,233,0.8],width:0.75} },
+        attributes: { panelIndex: idx, manual: true },
+    });
+
+    panelLayer.add(g);
+    panelHistory.push({ action: 'add', graphics: [g] });
+    _setUndoEnabled(true);
+    STATE.panelCount = panelLayer.graphics.length;
+    document.getElementById('toolClear').disabled = false;
+
+    // Brief flash on added panel
+    g.symbol = { type:'simple-fill', color:[34,197,94,0.35], outline:{color:[34,197,94,0.9],width:1.5} };
+    setTimeout(function() {
+        if (panelLayer.graphics.includes(g)) {
+            g.symbol = { type:'simple-fill', color:[14,165,233,0.25], outline:{color:[14,165,233,0.8],width:0.75} };
+        }
+    }, 400);
+}
+
+// =========================================================================
+// DELETE PANEL
+// =========================================================================
+function deletePanel(graphic) {
+    panelLayer.remove(graphic);
+    panelHistory.push({ action: 'delete', graphics: [graphic] });
+    _setUndoEnabled(true);
+    STATE.panelCount = panelLayer.graphics.length;
+    if (STATE.panelCount === 0) document.getElementById('toolClear').disabled = true;
+}
+
+function deleteSelectedPanel() {
+    if (selectedPanelGraphic) deletePanel(selectedPanelGraphic);
+    closePanelPopup();
+}
+
+// =========================================================================
+// PANEL POPUP
+// =========================================================================
+function showPanelPopup(graphic, event) {
+    selectedPanelGraphic = graphic;
+    const popup = document.getElementById('panelPopup');
+    const idx = graphic.attributes && graphic.attributes.panelIndex ? graphic.attributes.panelIndex : '?';
+    document.getElementById('ppTitle').textContent = 'Panneau #' + idx;
+    document.getElementById('ppMeta').innerHTML =
+        STATE.panelBrand + ' · ' + STATE.panelModel + '<br>' +
+        STATE.panelPower + ' Wc · ' + (STATE.panelWidth_mm) + '×' + (STATE.panelHeight_mm) + ' mm';
+
+    // Position relative to map container
+    const sp = event.screenPoint || { x: event.x || 100, y: event.y || 100 };
+    const container = document.querySelector('.flex-1.relative');
+    const cw = container ? container.offsetWidth : 800;
+    const ch = container ? container.offsetHeight : 600;
+
+    const px = Math.min(sp.x + 14, cw - 210);
+    const py = Math.max(10, sp.y - 110);
+
+    popup.style.left = px + 'px';
+    popup.style.top  = py + 'px';
+    popup.classList.add('visible');
+    _safeCreateIcons();
+}
+
+function closePanelPopup() {
+    selectedPanelGraphic = null;
+    const popup = document.getElementById('panelPopup');
+    if (popup) popup.classList.remove('visible');
+}
+
+// =========================================================================
+// UNDO / CLEAR
+// =========================================================================
+function undoLastPanel() {
+    if (panelHistory.length === 0) return;
+    const last = panelHistory.pop();
+    if (last.action === 'add') {
+        last.graphics.forEach(function(g) { panelLayer.remove(g); });
+    } else if (last.action === 'delete') {
+        last.graphics.forEach(function(g) { panelLayer.add(g); });
+    }
+    STATE.panelCount = panelLayer.graphics.length;
+    _setUndoEnabled(panelHistory.length > 0);
+    document.getElementById('toolClear').disabled = (panelLayer.graphics.length === 0);
+    closePanelPopup();
+}
+
+function clearAllPanels() {
+    if (!panelLayer || panelLayer.graphics.length === 0) return;
+    // Save snapshot for undo
+    const all = panelLayer.graphics.toArray ? panelLayer.graphics.toArray() : [];
+    panelLayer.removeAll();
+    if (all.length > 0) {
+        panelHistory.push({ action: 'delete', graphics: all });
+        _setUndoEnabled(true);
+    }
+    STATE.panelCount = 0;
+    document.getElementById('toolClear').disabled = true;
+    closePanelPopup();
+}
+
+function _setUndoEnabled(enabled) {
+    const el = document.getElementById('toolUndo');
+    if (el) el.disabled = !enabled;
+}
+
+// =========================================================================
+// PANEL COUNT BADGE
+// =========================================================================
+function updatePanelBadge() {
+    const count = STATE.panelCount || 0;
+    const badge = document.getElementById('panelBadge');
+    const badgeN = document.getElementById('badgeN');
+    const badgePwr = document.getElementById('badgePwr');
+    if (!badge) return;
+    if (count > 0) {
+        badge.classList.add('visible');
+        badgeN.textContent = count;
+        const kWc = (count * (STATE.panelPower || 545) / 1000).toFixed(2);
+        badgePwr.textContent = '· ' + kWc + ' kWc';
+        document.getElementById('toolClear').disabled = false;
+    } else {
+        badge.classList.remove('visible');
+        document.getElementById('toolClear').disabled = true;
+    }
+}
+
+// =========================================================================
+// WORKFLOW STEPS
+// =========================================================================
+function updateWorkflowSteps() {
+    const hasZone    = !!STATE.polygon;
+    const hasPanels  = (STATE.panelCount || 0) > 0;
+    const hasResults = (STATE.annualProduction_kWh || 0) > 0;
+
+    _setWfStep(1, hasZone ? 'done' : 'act');
+    _setWfStep(2, hasPanels ? 'done' : (hasZone ? 'act' : ''));
+    _setWfStep(3, hasResults ? 'done' : (hasPanels ? 'act' : ''));
+    _setWfStep(4, hasResults ? 'act' : '');
+}
+
+function _setWfStep(n, state) {
+    const num = document.getElementById('wfN' + n);
+    const lbl = document.getElementById('wfL' + n);
+    if (!num || !lbl) return;
+    num.className = 'wf-n' + (state ? ' ' + state : '');
+    lbl.className = 'wf-lbl' + (state ? ' ' + state : '');
+    num.textContent = state === 'done' ? '✓' : n;
+}
+
+// =========================================================================
 // INIT
 // =========================================================================
 document.addEventListener('DOMContentLoaded', function() {
     populateModels("JA Solar");
     onInverterBrandChange();   // populate inverter dropdowns
     renderApplianceTable();    // render energy balance table
+    updateWorkflowSteps();     // init workflow indicator
     _safeCreateIcons();
     checkBackend();
     checkOllama();
     setInterval(checkBackend, 15000);
     setInterval(checkOllama, 30000);
+    // Refresh icons after ArcGIS loads (it resets the DOM)
+    setTimeout(_safeCreateIcons, 2000);
 });
 </script>
 
