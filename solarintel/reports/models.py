@@ -7,7 +7,7 @@ from __future__ import annotations
 from datetime import date
 from typing import Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from solarintel.config.constants import (
     DEFAULT_LOCATION,
@@ -105,6 +105,8 @@ class QAReport(BaseModel):
 # ---------------------------------------------------------------------------
 class SolarReport(BaseModel):
     """Modèle racine du rapport PDF SolarIntel."""
+
+    model_config = ConfigDict(extra="allow")
 
     # Métadonnées
     project_name: str = "Projet Solaire"

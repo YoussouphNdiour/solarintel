@@ -100,6 +100,16 @@ class ReportRequest(BaseModel):
     battery_price_xof: float = 0
     # Bilan énergétique
     appliances: list[ApplianceItem] = []
+    daily_kwh_total: float = 0
+    daily_kwh_day: float = 0
+    daily_kwh_night: float = 0
+    peak_night_w: float = 0
+    # Prix équipements réels (envoyés par le frontend)
+    panel_price_xof_wc: float = 0       # XOF/Wc (converti depuis prix/panneau)
+    capex_panels_xof: float = 0
+    capex_total_xof: float = 0
+    install_pct: float = 15
+    install_type: str = "autoconsommation"
     # Métadonnées rapport
     company_name: str = "SolarIntel"
     report_title: str = "Étude de dimensionnement PV"
@@ -110,6 +120,7 @@ class ReportRequest(BaseModel):
     kpi_savings_xof: float = 0
     kpi_payback_years: float = 0
     kpi_lcoe: float = 0
+    kpi_peak_power_kwc: float = 0
 
 
 # ---------------------------------------------------------------------------
@@ -134,6 +145,28 @@ async def generate_report(req: ReportRequest):
 # PDF builder
 # ---------------------------------------------------------------------------
 
+def _fmt(value: float) -> str:
+    return f"{value:,.0f}".replace(",", "\u202f")
+
+
+def _build_cashflow(capex: float, annual_savings: float, years: int = 25) -> list[float]:
+    """Flux de trésorerie cumulé simplifié sur N ans."""
+    if capex <= 0 or annual_savings <= 0:
+        return [0.0] * years
+    cf = [-capex]
+    for y in range(1, years):
+        cf.append(cf[-1] + annual_savings * (1.035 ** y))   # +3.5% hausse tarif
+    return [round(v) for v in cf]
+
+
+def _estimate_monthly_kwh(annual_kwh: float) -> list[float]:
+    """Distribue la production annuelle sur 12 mois (Dakar, poids solaires)."""
+    # Poids mensuels basés sur l'irradiation horizontale à Dakar (PVGIS TMY normalisé)
+    weights = [8.8, 8.0, 8.6, 8.4, 8.7, 8.1, 7.6, 7.3, 7.6, 8.4, 8.7, 8.8]
+    total_w = sum(weights)
+    return [round(annual_kwh * w / total_w, 1) for w in weights]
+
+
 def _build_pdf(req: ReportRequest) -> bytes:
     try:
         from solarintel.reports.generator import ReportGenerator
@@ -151,12 +184,15 @@ def _build_pdf(req: ReportRequest) -> bytes:
 
     peak_kwc = req.panel_count * req.panel_power_wc / 1000.0
 
-    # ── CAPEX breakdown ──────────────────────────────────────────────────────
-    capex_panels   = req.panel_count * req.panel_power_wc * 650  # 650 XOF/Wc
+    # ── CAPEX — utiliser les prix réels envoyés par le frontend ─────────────
+    capex_panels   = req.capex_panels_xof if req.capex_panels_xof > 0 else (
+                         req.panel_count * req.panel_power_wc * (req.panel_price_xof_wc or 650)
+                     )
     capex_inverter = req.inverter_qty * req.inverter_price_xof
-    capex_battery  = (req.battery_qty * req.battery_price_xof
-                      if req.battery_model else 0)
-    total_capex    = capex_panels + capex_inverter + capex_battery
+    capex_battery  = (req.battery_qty * req.battery_price_xof if req.battery_model else 0)
+    capex_equip    = capex_panels + capex_inverter + capex_battery
+    capex_install  = capex_equip * (req.install_pct / 100)
+    total_capex    = req.capex_total_xof if req.capex_total_xof > 0 else (capex_equip + capex_install)
 
     # ── Equipment list (for report table) ───────────────────────────────────
     equipment_lines: list[str] = []
@@ -260,19 +296,24 @@ def _build_pdf(req: ReportRequest) -> bytes:
         ),
         simulation=SimulationResults(
             annual_production_kwh=round(req.kpi_production_kwh, 1),
+            monthly_production_kwh=_estimate_monthly_kwh(req.kpi_production_kwh),
             specific_yield_kwh_kwc=(
                 round(req.kpi_production_kwh / peak_kwc, 1) if peak_kwc > 0 else 0
             ),
             performance_ratio=0.78,
+            total_losses_pct=9.6,
         ),
         economics=EconomicAnalysis(
             total_cost_xof=round(total_capex),
+            cost_per_kwc_xof=round(total_capex / peak_kwc) if peak_kwc > 0 else 0,
             lcoe_xof_kwh=round(req.kpi_lcoe, 1),
             roi_pct=round(
                 (req.kpi_savings_xof * 25 - total_capex) / total_capex * 100, 1
             ) if total_capex > 0 else 0,
             payback_years=round(req.kpi_payback_years, 1),
             annual_savings_xof=round(req.kpi_savings_xof),
+            npv_xof=round(req.kpi_savings_xof * 25 - total_capex) if total_capex > 0 else 0,
+            cashflow_cumulative=_build_cashflow(total_capex, req.kpi_savings_xof),
         ),
         qa=QAReport(validations=qa_checks, verdict="PASS"),
         raw_crew_output=(
@@ -281,11 +322,45 @@ def _build_pdf(req: ReportRequest) -> bytes:
         ),
     )
 
+    # Champs supplémentaires (non dans SolarReport de base) — attachés dynamiquement
+    report.client_name = req.client_name
+    report.appliances  = [a.model_dump() for a in req.appliances] if req.appliances else []
+    report.equipment   = {
+        "inverter": {
+            "Marque":    req.inverter_brand,
+            "Modèle":    req.inverter_model or "—",
+            "Quantité":  f"{req.inverter_qty}",
+            "Prix unit.":f"{_fmt(req.inverter_price_xof)} XOF",
+            "Total":     f"{_fmt(capex_inverter)} XOF",
+        } if req.inverter_model else {},
+        "battery": {
+            "Modèle":    req.battery_model,
+            "Quantité":  f"{req.battery_qty}",
+            "Prix unit.":f"{_fmt(req.battery_price_xof)} XOF",
+            "Total":     f"{_fmt(capex_battery)} XOF",
+        } if req.battery_model else {},
+        "capex": {
+            "Panneaux solaires":        capex_panels,
+            "Onduleur(s)":              capex_inverter,
+            "Batterie(s)":              capex_battery,
+            f"Instal./Livr./Maint. ({req.install_pct:.0f}%)": capex_install,
+            "CAPEX Total":              total_capex,
+        },
+    }
+
+    # Logo — cherche dans assets/ à la racine du projet
+    _here = os.path.dirname(os.path.abspath(__file__))
+    logo_candidates = [
+        os.path.join(_here, "..", "assets", "logo_solarintel.png"),
+        os.path.join(_here, "..", "assets", "logo.png"),
+    ]
+    logo_path = next((p for p in logo_candidates if os.path.isfile(p)), None)
+
     # ReportGenerator.generate() only accepts a file path, so we use a temp file.
     tmp_fd, tmp_path = tempfile.mkstemp(suffix=".pdf")
     os.close(tmp_fd)
     try:
-        gen = ReportGenerator(report)
+        gen = ReportGenerator(report, logo_path=logo_path, company_name=req.company_name)
         gen.generate(output_path=tmp_path)
         with open(tmp_path, "rb") as f:
             return f.read()
@@ -438,14 +513,6 @@ def _static_recommendations(req: ReportRequest) -> str:
     )
 
     return "\n\n".join(lines)
-
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-def _fmt(value: float) -> str:
-    return f"{value:,.0f}".replace(",", " ")
 
 
 def _plain_text_fallback(req: ReportRequest) -> bytes:

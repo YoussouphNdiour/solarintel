@@ -1,9 +1,6 @@
 """
-Moteur de génération PDF SolarIntel.
-
-Utilise BaseDocTemplate avec deux PageTemplate :
-- cover  : page de garde plein écran
-- content : pages avec header/footer persistants
+Moteur de génération PDF SolarIntel — Design professionnel v2.
+Cover page dessinée sur canvas. Pages contenu avec header/footer.
 """
 
 from __future__ import annotations
@@ -13,122 +10,362 @@ from datetime import date
 from pathlib import Path
 
 from reportlab.lib.pagesizes import A4
-from reportlab.lib.units import mm, cm
+from reportlab.lib.units import mm
 from reportlab.lib.colors import HexColor
-from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
+from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY
+from reportlab.lib.styles import ParagraphStyle
 from reportlab.platypus import (
-    BaseDocTemplate,
-    Frame,
-    NextPageTemplate,
-    PageBreak,
-    PageTemplate,
-    Paragraph,
-    Spacer,
-    Table,
-    TableStyle,
-    Image as RLImage,
+    BaseDocTemplate, Frame, NextPageTemplate, PageBreak,
+    PageTemplate, Paragraph, Spacer, Table, TableStyle, KeepTogether,
 )
-from reportlab.platypus.flowables import KeepTogether
-from reportlab.graphics.shapes import Drawing, Line
 
 from solarintel.reports.models import SolarReport
 from solarintel.reports.theme import ReportTheme
-from solarintel.reports.charts import (
-    build_monthly_production_chart,
-    build_cashflow_chart,
-)
+from solarintel.reports.charts import build_monthly_production_chart, build_cashflow_chart
 from solarintel.config.constants import PVLIB_MODULES, ECONOMIC_DEFAULTS
 
 PAGE_W, PAGE_H = A4
 MARGIN = ReportTheme.PAGE_MARGIN
+CONTENT_W = PAGE_W - 2 * MARGIN
+
+# ── Palette ──────────────────────────────────────────────────────────────────
+C_PRIMARY      = HexColor("#0EA5E9")
+C_PRIMARY_DARK = HexColor("#0369A1")
+C_NAVY         = HexColor("#0F172A")
+C_AMBER        = HexColor("#F59E0B")
+C_GREEN        = HexColor("#22C55E")
+C_RED          = HexColor("#EF4444")
+C_WHITE        = HexColor("#FFFFFF")
+C_SURFACE      = HexColor("#F8FAFC")
+C_BORDER       = HexColor("#E2E8F0")
+C_TEXT         = HexColor("#0F172A")
+C_TEXT_SEC     = HexColor("#475569")
+C_TEXT_LIGHT   = HexColor("#94A3B8")
+C_ROW_ALT      = HexColor("#F1F5F9")
 
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
+# ── Helpers ───────────────────────────────────────────────────────────────────
 
-def _fmt_number(value: float, decimals: int = 0, suffix: str = "") -> str:
-    """Formate un nombre avec séparateur de milliers (espace)."""
+def _fmt(value: float, decimals: int = 0, suffix: str = "") -> str:
     if decimals == 0:
-        formatted = f"{value:,.0f}".replace(",", " ")
+        s = f"{value:,.0f}".replace(",", "\u202f")
     else:
-        formatted = f"{value:,.{decimals}f}".replace(",", " ")
-    return f"{formatted}{suffix}"
+        s = f"{value:,.{decimals}f}".replace(",", "\u202f")
+    return f"{s}{suffix}"
 
 
-def _make_separator() -> Drawing:
-    """Trait horizontal fin (séparateur de section)."""
-    w = PAGE_W - 2 * MARGIN
-    d = Drawing(w, 4)
-    d.add(Line(0, 2, w, 2, strokeColor=ReportTheme.BORDER, strokeWidth=0.5))
-    return d
+def _section_header(text: str, color=None) -> Table:
+    """Bande colorée pleine largeur pour les titres de section."""
+    bg = color or C_PRIMARY_DARK
+    para = Paragraph(
+        text,
+        ParagraphStyle("sh", fontName="Helvetica-Bold", fontSize=11,
+                       textColor=C_WHITE, leading=15),
+    )
+    t = Table([[para]], colWidths=[CONTENT_W])
+    t.setStyle(TableStyle([
+        ("BACKGROUND",    (0, 0), (-1, -1), bg),
+        ("TOPPADDING",    (0, 0), (-1, -1), 6),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+        ("LEFTPADDING",   (0, 0), (-1, -1), 10),
+        ("RIGHTPADDING",  (0, 0), (-1, -1), 10),
+        ("VALIGN",        (0, 0), (-1, -1), "MIDDLE"),
+    ]))
+    t.spaceBefore = 8 * mm
+    t.spaceAfter  = 4 * mm
+    return t
 
 
-def _safe_image(path: str | Path, width: float, height: float) -> RLImage | Spacer:
-    """Charge une image si elle existe, sinon retourne un Spacer."""
-    if path and os.path.isfile(str(path)):
-        return RLImage(str(path), width=width, height=height)
-    return Spacer(width, height)
+def _subsection_header(text: str) -> Table:
+    """Sous-titre avec barre gauche colorée."""
+    para = Paragraph(
+        text,
+        ParagraphStyle("ssh", fontName="Helvetica-Bold", fontSize=10,
+                       textColor=C_PRIMARY_DARK, leading=13),
+    )
+    t = Table([[para]], colWidths=[CONTENT_W])
+    t.setStyle(TableStyle([
+        ("BACKGROUND",    (0, 0), (-1, -1), HexColor("#EFF6FF")),
+        ("LINEAFTER",     (0, 0), (-1, -1), 0, C_WHITE),
+        ("LINEBEFORE",    (0, 0), (-1, -1), 3, C_PRIMARY),
+        ("TOPPADDING",    (0, 0), (-1, -1), 5),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+        ("LEFTPADDING",   (0, 0), (-1, -1), 8),
+    ]))
+    t.spaceBefore = 5 * mm
+    t.spaceAfter  = 3 * mm
+    return t
 
 
-# ---------------------------------------------------------------------------
-# Page callbacks
-# ---------------------------------------------------------------------------
+def _data_table(data: list[list], col_widths=None) -> Table:
+    """Tableau 2 colonnes paramètre/valeur avec style professionnel."""
+    if col_widths is None:
+        col_widths = [CONTENT_W * 0.55, CONTENT_W * 0.45]
+    t = Table(data, colWidths=col_widths)
+    cmds = [
+        ("FONTNAME",      (0, 0), (-1,  0), "Helvetica-Bold"),
+        ("FONTNAME",      (0, 1), (-1, -1), "Helvetica"),
+        ("FONTSIZE",      (0, 0), (-1, -1), 9),
+        ("TEXTCOLOR",     (0, 0), (-1,  0), C_WHITE),
+        ("BACKGROUND",    (0, 0), (-1,  0), C_PRIMARY_DARK),
+        ("ALIGN",         (1, 0), (1,  -1), "RIGHT"),
+        ("VALIGN",        (0, 0), (-1, -1), "MIDDLE"),
+        ("GRID",          (0, 0), (-1, -1), 0.4, C_BORDER),
+        ("TOPPADDING",    (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ("LEFTPADDING",   (0, 0), (-1, -1), 7),
+        ("RIGHTPADDING",  (0, 0), (-1, -1), 7),
+    ]
+    for i in range(1, len(data)):
+        if i % 2 == 0:
+            cmds.append(("BACKGROUND", (0, i), (-1, i), C_ROW_ALT))
+    t.setStyle(TableStyle(cmds))
+    t.spaceAfter = 4 * mm
+    return t
 
-def _cover_page_callback(canvas, doc):
-    """Callback pour la page de garde : fond plein + logo centré."""
+
+def _kpi_table(kpis: list[tuple[str, str, str]]) -> Table:
+    """
+    Tableau de KPIs en grille 2 colonnes.
+    kpis = [(valeur, label, couleur), ...]
+    """
+    cells = []
+    row = []
+    for i, (val, label, color) in enumerate(kpis):
+        v_para = Paragraph(
+            val,
+            ParagraphStyle("kv", fontName="Helvetica-Bold", fontSize=18,
+                           textColor=HexColor(color), alignment=TA_CENTER),
+        )
+        l_para = Paragraph(
+            label,
+            ParagraphStyle("kl", fontName="Helvetica", fontSize=8,
+                           textColor=C_TEXT_SEC, alignment=TA_CENTER),
+        )
+        cell = Table([[v_para], [l_para]])
+        cell.setStyle(TableStyle([
+            ("ALIGN",         (0, 0), (-1, -1), "CENTER"),
+            ("VALIGN",        (0, 0), (-1, -1), "MIDDLE"),
+            ("TOPPADDING",    (0, 0), (-1, -1), 8),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+        ]))
+        row.append(cell)
+        if len(row) == 2:
+            cells.append(row)
+            row = []
+    if row:
+        while len(row) < 2:
+            row.append(Spacer(1, 1))
+        cells.append(row)
+
+    col_w = CONTENT_W / 2
+    t = Table(cells, colWidths=[col_w, col_w])
+    cmds = [
+        ("GRID",          (0, 0), (-1, -1), 0.5, C_BORDER),
+        ("BACKGROUND",    (0, 0), (-1, -1), C_SURFACE),
+        ("TOPPADDING",    (0, 0), (-1, -1), 0),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+        ("LEFTPADDING",   (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING",  (0, 0), (-1, -1), 0),
+    ]
+    t.setStyle(TableStyle(cmds))
+    t.spaceAfter = 5 * mm
+    return t
+
+
+# ── Page callbacks ────────────────────────────────────────────────────────────
+
+def _cover_callback(canvas, doc):
+    """Dessine la page de garde complète directement sur le canvas."""
     canvas.saveState()
-    canvas.setFillColor(ReportTheme.COVER_BG)
-    canvas.rect(0, 0, PAGE_W, PAGE_H, fill=1, stroke=0)
-    canvas.restoreState()
+    W, H = PAGE_W, PAGE_H
 
+    # ── Fond sombre (3/4 supérieur) ──────────────────────────────────────────
+    canvas.setFillColor(C_NAVY)
+    canvas.rect(0, H * 0.28, W, H * 0.72, fill=1, stroke=0)
 
-def _content_header_footer(canvas, doc):
-    """Header et footer pour les pages de contenu."""
-    canvas.saveState()
+    # ── Fond clair (1/4 inférieur) ───────────────────────────────────────────
+    canvas.setFillColor(C_SURFACE)
+    canvas.rect(0, 0, W, H * 0.28, fill=1, stroke=0)
 
-    # -- Header --
-    top_y = PAGE_H - 12 * mm
-    # Logo (petit) à gauche
+    # ── Bande accent (amber) ──────────────────────────────────────────────────
+    canvas.setFillColor(C_AMBER)
+    canvas.rect(0, H * 0.28 - 3 * mm, W, 3 * mm, fill=1, stroke=0)
+
+    # ── Bande bleue supérieure ────────────────────────────────────────────────
+    canvas.setFillColor(C_PRIMARY_DARK)
+    canvas.rect(0, H - 18 * mm, W, 18 * mm, fill=1, stroke=0)
+
+    # ── Barre verticale gauche (accent) ───────────────────────────────────────
+    canvas.setFillColor(C_PRIMARY)
+    canvas.rect(0, 0, 5 * mm, H, fill=1, stroke=0)
+
+    # ── Logo (top-right dans la bande bleue) ──────────────────────────────────
     logo = getattr(doc, "_logo_path", None)
     if logo and os.path.isfile(logo):
-        canvas.drawImage(logo, MARGIN, top_y - 2 * mm, width=10 * mm,
-                         height=10 * mm, preserveAspectRatio=True, mask="auto")
+        try:
+            canvas.drawImage(
+                logo,
+                W - 20 * mm - 12 * mm, H - 16 * mm,
+                width=14 * mm, height=14 * mm,
+                preserveAspectRatio=True, mask="auto",
+            )
+        except Exception:
+            pass
 
-    # Company name
-    canvas.setFont(ReportTheme.FONT_SANS_BOLD, 9)
-    canvas.setFillColor(ReportTheme.PRIMARY_DARK)
+    # ── Nom de l'entreprise (bande bleue) ────────────────────────────────────
     company = getattr(doc, "_company_name", "SolarIntel")
-    canvas.drawString(MARGIN + 12 * mm, top_y + 1 * mm, company)
+    canvas.setFont("Helvetica-Bold", 11)
+    canvas.setFillColor(C_WHITE)
+    canvas.drawString(12 * mm, H - 12 * mm, company)
 
-    # Separator line
-    canvas.setStrokeColor(ReportTheme.BORDER)
-    canvas.setLineWidth(0.5)
-    canvas.line(MARGIN, top_y - 4 * mm, PAGE_W - MARGIN, top_y - 4 * mm)
+    canvas.setFont("Helvetica", 8)
+    canvas.setFillColor(HexColor("#93C5FD"))
+    canvas.drawString(12 * mm, H - 17 * mm, "Dimensionnement Photovoltaïque")
 
-    # -- Footer --
-    bottom_y = 10 * mm
-    canvas.setFont(ReportTheme.FONT_SANS, 7)
-    canvas.setFillColor(ReportTheme.TEXT_LIGHT)
+    # ── Numéro de page couverture (bande bleue, droite) ───────────────────────
+    canvas.setFont("Helvetica", 8)
+    canvas.setFillColor(HexColor("#64748B"))
+    canvas.drawRightString(W - 8 * mm, H - 17 * mm, "Confidentiel")
 
-    gen_date = getattr(doc, "_gen_date", date.today().isoformat())
-    canvas.drawString(MARGIN, bottom_y, f"Généré le {gen_date}")
+    # ── Titre principal ───────────────────────────────────────────────────────
+    title = getattr(doc, "_report_title", "Rapport de Dimensionnement Solaire")
+    canvas.setFont("Helvetica-Bold", 26)
+    canvas.setFillColor(C_WHITE)
+    # Wrap manual si trop long
+    if len(title) > 38:
+        mid = title[:38].rfind(" ")
+        _draw_centered_text(canvas, title[:mid],  "Helvetica-Bold", 26, C_WHITE, W, H * 0.72)
+        _draw_centered_text(canvas, title[mid+1:], "Helvetica-Bold", 22, C_WHITE, W, H * 0.72 - 18 * mm)
+    else:
+        _draw_centered_text(canvas, title, "Helvetica-Bold", 26, C_WHITE, W, H * 0.72)
 
-    page_num = f"Page {doc.page}"
-    canvas.drawRightString(PAGE_W - MARGIN, bottom_y, page_num)
+    # ── Icône soleil (décoratif) ───────────────────────────────────────────────
+    canvas.setFont("Helvetica-Bold", 48)
+    canvas.setFillColor(HexColor("#1E3A5F"))
+    canvas.drawRightString(W - 8 * mm, H * 0.35, "☀")
 
-    # Footer separator
-    canvas.line(MARGIN, bottom_y + 4 * mm, PAGE_W - MARGIN, bottom_y + 4 * mm)
+    # ── Puissance système (highlight amber) ───────────────────────────────────
+    sys_info = getattr(doc, "_sys_info", "")
+    if sys_info:
+        canvas.setFont("Helvetica-Bold", 16)
+        canvas.setFillColor(C_AMBER)
+        _draw_centered_text(canvas, sys_info, "Helvetica-Bold", 16, C_AMBER, W, H * 0.72 - 32 * mm)
+
+    # ── Section client (fond clair) ───────────────────────────────────────────
+    x_info = 12 * mm
+    y_base = H * 0.28 - 10 * mm
+
+    def _info_line(label: str, value: str, y: float):
+        canvas.setFont("Helvetica-Bold", 8)
+        canvas.setFillColor(C_TEXT_SEC)
+        canvas.drawString(x_info, y, label)
+        canvas.setFont("Helvetica", 9)
+        canvas.setFillColor(C_TEXT)
+        canvas.drawString(x_info + 28 * mm, y, value)
+
+    client_name = getattr(doc, "_client_name", "")
+    location    = getattr(doc, "_location",    "")
+    gen_date    = getattr(doc, "_gen_date",    date.today().isoformat())
+
+    if client_name:
+        _info_line("Client :",   client_name, y_base)
+        y_base -= 7 * mm
+    if location:
+        _info_line("Site :",     location,    y_base)
+        y_base -= 7 * mm
+    _info_line("Date :",         gen_date,    y_base)
+
+    # ── Pied de page couverture ───────────────────────────────────────────────
+    canvas.setFillColor(C_PRIMARY_DARK)
+    canvas.rect(0, 0, W, 6 * mm, fill=1, stroke=0)
+    canvas.setFont("Helvetica", 7)
+    canvas.setFillColor(C_WHITE)
+    canvas.drawString(12 * mm, 2 * mm, "Propulsé par SolarIntel · pvlib · CrewAI")
+    canvas.drawRightString(W - 8 * mm, 2 * mm, "www.solarintel.io")
 
     canvas.restoreState()
 
 
-# ---------------------------------------------------------------------------
-# ReportGenerator
-# ---------------------------------------------------------------------------
+def _draw_centered_text(canvas, text, font, size, color, page_w, y):
+    canvas.setFont(font, size)
+    canvas.setFillColor(color)
+    canvas.drawCentredString(page_w / 2, y, text)
+
+
+def _content_callback(canvas, doc):
+    """Header et footer pour les pages de contenu."""
+    canvas.saveState()
+    W, H = PAGE_W, PAGE_H
+
+    # ── Header band ───────────────────────────────────────────────────────────
+    canvas.setFillColor(C_NAVY)
+    canvas.rect(0, H - 14 * mm, W, 14 * mm, fill=1, stroke=0)
+
+    # Barre accent en bas du header
+    canvas.setFillColor(C_PRIMARY)
+    canvas.rect(0, H - 14 * mm, W, 1.5 * mm, fill=1, stroke=0)
+
+    # Logo dans le header
+    logo = getattr(doc, "_logo_path", None)
+    if logo and os.path.isfile(logo):
+        try:
+            canvas.drawImage(
+                logo, MARGIN, H - 13 * mm,
+                width=9 * mm, height=9 * mm,
+                preserveAspectRatio=True, mask="auto",
+            )
+        except Exception:
+            pass
+
+    # Nom société dans le header
+    company = getattr(doc, "_company_name", "SolarIntel")
+    canvas.setFont("Helvetica-Bold", 9)
+    canvas.setFillColor(C_WHITE)
+    canvas.drawString(MARGIN + 11 * mm, H - 9 * mm, company)
+
+    # Titre rapport dans le header (centre)
+    r_title = getattr(doc, "_report_title", "")
+    if r_title:
+        canvas.setFont("Helvetica", 8)
+        canvas.setFillColor(HexColor("#93C5FD"))
+        canvas.drawCentredString(W / 2, H - 9 * mm, r_title)
+
+    # Numéro de page (droite du header)
+    canvas.setFont("Helvetica", 8)
+    canvas.setFillColor(C_TEXT_LIGHT)
+    canvas.drawRightString(W - MARGIN, H - 9 * mm, f"Page {doc.page}")
+
+    # ── Barre verticale accent ────────────────────────────────────────────────
+    canvas.setFillColor(C_PRIMARY)
+    canvas.rect(0, 0, 3 * mm, H, fill=1, stroke=0)
+
+    # ── Footer ────────────────────────────────────────────────────────────────
+    canvas.setFillColor(C_SURFACE)
+    canvas.rect(MARGIN - 5, 6 * mm, W - 2 * MARGIN + 10, 0.3, fill=1, stroke=0)
+
+    canvas.setFont("Helvetica", 7)
+    canvas.setFillColor(C_TEXT_LIGHT)
+    gen_date = getattr(doc, "_gen_date", date.today().isoformat())
+    client   = getattr(doc, "_client_name", "")
+    footer_l = f"Généré le {gen_date}"
+    if client:
+        footer_l += f"  ·  Client : {client}"
+    canvas.drawString(MARGIN, 4 * mm, footer_l)
+    canvas.drawRightString(W - MARGIN, 4 * mm, f"{company}  ·  Confidentiel")
+
+    # Ligne séparatrice footer
+    canvas.setStrokeColor(C_BORDER)
+    canvas.setLineWidth(0.5)
+    canvas.line(MARGIN, 8 * mm, W - MARGIN, 8 * mm)
+
+    canvas.restoreState()
+
+
+# ── ReportGenerator ───────────────────────────────────────────────────────────
 
 class ReportGenerator:
-    """Génère un PDF professionnel à partir d'un SolarReport."""
+    """Génère un PDF professionnel SolarIntel v2."""
 
     def __init__(
         self,
@@ -136,425 +373,422 @@ class ReportGenerator:
         logo_path: str | Path | None = None,
         company_name: str | None = None,
     ):
-        self.report = report
-        self.logo_path = str(logo_path) if logo_path else None
+        self.report       = report
+        self.logo_path    = str(logo_path) if logo_path else None
         self.company_name = company_name or report.company_name
-        self.styles = ReportTheme.get_styles()
+
+        # Auto-detect logo si non fourni
+        if not self.logo_path:
+            guesses = [
+                Path(__file__).parent.parent.parent / "assets" / "logo_solarintel.png",
+                Path(__file__).parent.parent.parent / "assets" / "logo.png",
+            ]
+            for g in guesses:
+                if g.exists():
+                    self.logo_path = str(g)
+                    break
 
     def generate(self, output_path: str = "rapport_solarintel.pdf") -> str:
-        """Génère le PDF et retourne le chemin absolu du fichier."""
         doc = BaseDocTemplate(
             output_path,
             pagesize=A4,
             leftMargin=MARGIN,
             rightMargin=MARGIN,
-            topMargin=MARGIN + ReportTheme.HEADER_HEIGHT,
-            bottomMargin=MARGIN + ReportTheme.FOOTER_HEIGHT,
+            topMargin=14 * mm + MARGIN,
+            bottomMargin=12 * mm + MARGIN,
         )
 
-        # Pass metadata to callbacks via doc attributes
-        doc._logo_path = self.logo_path
+        # Métadonnées sur le doc (accessibles dans les callbacks)
+        r = self.report
+        doc._logo_path    = self.logo_path
         doc._company_name = self.company_name
-        doc._gen_date = self.report.generation_date.isoformat()
+        doc._report_title = r.report_title
+        doc._gen_date     = r.generation_date.strftime("%d/%m/%Y")
+        doc._client_name  = getattr(r, "client_name", "")
+        doc._location     = r.system.location_name
+        doc._sys_info     = (
+            f"{r.system.panel_count} panneaux  ·  {r.system.total_power_kwc:.1f} kWc  ·  "
+            f"{_fmt(r.simulation.annual_production_kwh)} kWh/an"
+            if r.system.panel_count > 0 else ""
+        )
 
-        # -- Frames --
+        # ── Frames ───────────────────────────────────────────────────────────
         cover_frame = Frame(
             0, 0, PAGE_W, PAGE_H,
-            leftPadding=MARGIN, rightPadding=MARGIN,
-            topPadding=MARGIN, bottomPadding=MARGIN,
+            leftPadding=0, rightPadding=0, topPadding=0, bottomPadding=0,
             id="cover",
         )
         content_frame = Frame(
-            MARGIN,
-            MARGIN + ReportTheme.FOOTER_HEIGHT,
-            PAGE_W - 2 * MARGIN,
-            PAGE_H - 2 * MARGIN - ReportTheme.HEADER_HEIGHT - ReportTheme.FOOTER_HEIGHT,
+            MARGIN + 3 * mm,
+            12 * mm + MARGIN,
+            CONTENT_W - 3 * mm,
+            PAGE_H - 14 * mm - 12 * mm - 2 * MARGIN,
             id="content",
         )
 
         doc.addPageTemplates([
-            PageTemplate(id="cover", frames=[cover_frame],
-                         onPage=_cover_page_callback),
-            PageTemplate(id="content", frames=[content_frame],
-                         onPage=_content_header_footer),
+            PageTemplate(id="cover",   frames=[cover_frame],   onPage=_cover_callback),
+            PageTemplate(id="content", frames=[content_frame], onPage=_content_callback),
         ])
 
-        # Build story
-        story = []
+        # ── Story ─────────────────────────────────────────────────────────────
+        story: list = []
         self._add_cover(story)
         self._add_executive_summary(story)
         self._add_system_config(story)
         self._add_simulation(story)
         self._add_economics(story)
+        if getattr(r, "appliances", None):
+            self._add_energy_balance(story)
+        self._add_equipment(story)
         self._add_qa(story)
         self._add_appendix(story)
 
         doc.build(story)
         return os.path.abspath(output_path)
 
-    # -------------------------------------------------------------------
-    # Section 1 : Page de garde
-    # -------------------------------------------------------------------
+    # ── Cover ─────────────────────────────────────────────────────────────────
+
     def _add_cover(self, story: list) -> None:
-        s = self.styles
-
-        story.append(Spacer(1, 60 * mm))
-
-        # Logo
-        if self.logo_path and os.path.isfile(self.logo_path):
-            logo = RLImage(self.logo_path, width=50 * mm, height=50 * mm)
-            logo.hAlign = "CENTER"
-            story.append(logo)
-            story.append(Spacer(1, 10 * mm))
-
-        story.append(Paragraph(self.report.report_title, s["cover_title"]))
-        story.append(Spacer(1, 5 * mm))
-        story.append(Paragraph(self.report.system.location_name, s["cover_subtitle"]))
-        story.append(Spacer(1, 3 * mm))
-        story.append(Paragraph(
-            self.report.generation_date.strftime("%d/%m/%Y"),
-            s["cover_subtitle"],
-        ))
-        story.append(Spacer(1, 15 * mm))
-        story.append(Paragraph(self.company_name, s["cover_subtitle"]))
-
-        # Switch to content template for next pages
+        """Tout est dessiné dans _cover_callback — on fait juste passer au template suivant."""
         story.append(NextPageTemplate("content"))
         story.append(PageBreak())
 
-    # -------------------------------------------------------------------
-    # Section 2 : Résumé exécutif
-    # -------------------------------------------------------------------
+    # ── Section 1 : Résumé exécutif ──────────────────────────────────────────
+
     def _add_executive_summary(self, story: list) -> None:
-        s = self.styles
-        story.append(Paragraph("1. Résumé exécutif", s["heading1"]))
-        story.append(_make_separator())
-        story.append(Spacer(1, 3 * mm))
+        r = self.report
+        story.append(_section_header("1. Résumé exécutif"))
 
-        if self.report.executive_summary:
-            story.append(Paragraph(self.report.executive_summary, s["body"]))
+        body_style = ParagraphStyle(
+            "body", fontName="Helvetica", fontSize=10,
+            textColor=C_TEXT, leading=15, spaceAfter=3 * mm,
+            alignment=TA_JUSTIFY,
+        )
+
+        if r.executive_summary:
+            for line in r.executive_summary.split("\n"):
+                line = line.strip()
+                if line:
+                    story.append(Paragraph(line, body_style))
+            story.append(Spacer(1, 3 * mm))
         else:
-            r = self.report
             summary = (
-                f"Ce rapport présente le dimensionnement d'une installation "
-                f"photovoltaïque de <b>{_fmt_number(r.system.total_power_kwc, 1)} kWc</b> "
-                f"({r.system.panel_count} panneaux {r.system.panel_brand} "
-                f"{r.system.panel_power_wc} Wc) "
-                f"sur le site de <b>{r.system.location_name}</b>."
-                f"<br/><br/>"
+                f"Ce rapport présente le dimensionnement d'une installation photovoltaïque "
+                f"de <b>{_fmt(r.system.total_power_kwc, 1)} kWc</b> "
+                f"({r.system.panel_count} panneaux {r.system.panel_brand} {r.system.panel_power_wc} Wc) "
+                f"sur le site de <b>{r.system.location_name}</b>. "
                 f"La simulation pvlib estime une production annuelle de "
-                f"<b>{_fmt_number(r.simulation.annual_production_kwh)} kWh</b> "
-                f"avec un ratio de performance de "
-                f"<b>{r.simulation.performance_ratio:.1%}</b>. "
-                f"L'analyse économique projette un temps de retour sur investissement "
-                f"de <b>{r.economics.payback_years:.1f} ans</b> et un LCOE de "
-                f"<b>{_fmt_number(r.economics.lcoe_xof_kwh, 1)} {r.economics.currency}/kWh</b>."
+                f"<b>{_fmt(r.simulation.annual_production_kwh)} kWh</b>. "
+                f"L'analyse économique projette un retour sur investissement de "
+                f"<b>{r.economics.payback_years:.1f} ans</b> et un LCOE de "
+                f"<b>{_fmt(r.economics.lcoe_xof_kwh, 1)} {r.economics.currency}/kWh</b>."
             )
-            story.append(Paragraph(summary, s["body"]))
-
-        story.append(Spacer(1, 5 * mm))
-
-        # KPI boxes
-        kpis = [
-            (_fmt_number(self.report.simulation.annual_production_kwh), "kWh/an"),
-            (f"{self.report.simulation.performance_ratio:.1%}", "Ratio Perf."),
-            (f"{self.report.economics.payback_years:.1f} ans", "Retour Invest."),
-            (_fmt_number(self.report.economics.lcoe_xof_kwh, 1), "LCOE (XOF/kWh)"),
-        ]
-        kpi_data = [
-            [Paragraph(v, s["kpi_value"]) for v, _ in kpis],
-            [Paragraph(lbl, s["kpi_label"]) for _, lbl in kpis],
-        ]
-        kpi_table = Table(kpi_data, colWidths=[(PAGE_W - 2 * MARGIN) / 4] * 4)
-        kpi_table.setStyle(TableStyle([
-            ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-            ("BOX", (0, 0), (-1, -1), 0.5, ReportTheme.BORDER),
-            ("INNERGRID", (0, 0), (-1, -1), 0.5, ReportTheme.BORDER),
-            ("TOPPADDING", (0, 0), (-1, 0), 6),
-            ("BOTTOMPADDING", (0, -1), (-1, -1), 6),
-            ("BACKGROUND", (0, 0), (-1, -1), ReportTheme.SURFACE),
-        ]))
-        story.append(kpi_table)
-
-    # -------------------------------------------------------------------
-    # Section 3 : Configuration système
-    # -------------------------------------------------------------------
-    def _add_system_config(self, story: list) -> None:
-        s = self.styles
-        sys = self.report.system
-
-        story.append(Spacer(1, 5 * mm))
-        story.append(Paragraph("2. Configuration système", s["heading1"]))
-        story.append(_make_separator())
-
-        # Panel specs table
-        story.append(Paragraph("2.1 Spécifications panneaux", s["heading2"]))
-        panel_data = [
-            ["Paramètre", "Valeur"],
-            ["Marque / Modèle", f"{sys.panel_brand} {sys.panel_model}"],
-            ["Puissance unitaire", f"{sys.panel_power_wc} Wc"],
-            ["Efficacité", f"{sys.panel_efficiency:.1%}"],
-            ["Nombre de panneaux", str(sys.panel_count)],
-            ["Puissance totale", f"{sys.total_power_kwc:.1f} kWc"],
-        ]
-        story.append(self._build_data_table(panel_data))
-
-        # Location table
-        story.append(Paragraph("2.2 Localisation & orientation", s["heading2"]))
-        loc_data = [
-            ["Paramètre", "Valeur"],
-            ["Site", sys.location_name],
-            ["Latitude", f"{sys.latitude:.4f}°"],
-            ["Longitude", f"{sys.longitude:.4f}°"],
-            ["Altitude", f"{sys.altitude:.0f} m"],
-            ["Azimut", f"{sys.orientation_azimuth:.0f}° (0°=Nord, 180°=Sud)"],
-            ["Inclinaison", f"{sys.tilt:.0f}°"],
-        ]
-        story.append(self._build_data_table(loc_data))
-
-    # -------------------------------------------------------------------
-    # Section 4 : Simulation pvlib
-    # -------------------------------------------------------------------
-    def _add_simulation(self, story: list) -> None:
-        s = self.styles
-        sim = self.report.simulation
-
-        story.append(Spacer(1, 5 * mm))
-        story.append(Paragraph("3. Simulation photovoltaïque", s["heading1"]))
-        story.append(_make_separator())
+            story.append(Paragraph(summary, body_style))
 
         # KPIs
-        story.append(Paragraph("3.1 Indicateurs clés", s["heading2"]))
-        sim_data = [
-            ["Indicateur", "Valeur"],
-            ["Production annuelle", f"{_fmt_number(sim.annual_production_kwh)} kWh"],
-            ["Rendement spécifique", f"{_fmt_number(sim.specific_yield_kwh_kwc)} kWh/kWc"],
-            ["Performance Ratio", f"{sim.performance_ratio:.1%}"],
+        kpis = [
+            (_fmt(r.simulation.annual_production_kwh) + " kWh/an", "Production annuelle",  "#0EA5E9"),
+            (f"{r.simulation.performance_ratio:.1%}",               "Ratio de performance", "#22C55E"),
+            (f"{r.economics.payback_years:.1f} ans",                "Retour investissement","#F59E0B"),
+            (_fmt(r.economics.lcoe_xof_kwh, 1) + " XOF/kWh",       "LCOE",                 "#8B5CF6"),
         ]
-        story.append(self._build_data_table(sim_data))
+        story.append(_kpi_table(kpis))
 
-        # Monthly chart
-        story.append(Paragraph("3.2 Production mensuelle", s["heading2"]))
+    # ── Section 2 : Configuration système ────────────────────────────────────
+
+    def _add_system_config(self, story: list) -> None:
+        sys = self.report.system
+        story.append(_section_header("2. Configuration système"))
+
+        story.append(_subsection_header("2.1  Spécifications panneaux"))
+        eff_pct = sys.panel_efficiency * 100 if sys.panel_efficiency < 1 else sys.panel_efficiency
+        story.append(_data_table([
+            ["Paramètre",           "Valeur"],
+            ["Marque",              sys.panel_brand],
+            ["Modèle",              sys.panel_model],
+            ["Puissance unitaire",  f"{sys.panel_power_wc} Wc"],
+            ["Efficacité",          f"{eff_pct:.1f} %"],
+            ["Nombre de panneaux",  f"{sys.panel_count}"],
+            ["Puissance totale",    f"{sys.total_power_kwc:.2f} kWc"],
+        ]))
+
+        story.append(_subsection_header("2.2  Localisation & orientation"))
+        story.append(_data_table([
+            ["Paramètre",   "Valeur"],
+            ["Site",        sys.location_name],
+            ["Latitude",    f"{sys.latitude:.4f}°"],
+            ["Longitude",   f"{sys.longitude:.4f}°"],
+            ["Altitude",    f"{sys.altitude:.0f} m"],
+            ["Azimut",      f"{sys.orientation_azimuth:.0f}°  (180° = Plein sud)"],
+            ["Inclinaison", f"{sys.tilt:.0f}°"],
+        ]))
+
+    # ── Section 3 : Simulation pvlib ──────────────────────────────────────────
+
+    def _add_simulation(self, story: list) -> None:
+        sim = self.report.simulation
+        story.append(_section_header("3. Simulation photovoltaïque"))
+
+        story.append(_subsection_header("3.1  Indicateurs clés de performance"))
+        story.append(_data_table([
+            ["Indicateur",           "Valeur"],
+            ["Production annuelle",  f"{_fmt(sim.annual_production_kwh)} kWh"],
+            ["Rendement spécifique", f"{_fmt(sim.specific_yield_kwh_kwc)} kWh/kWc"],
+            ["Performance Ratio",   f"{sim.performance_ratio:.1%}"],
+        ]))
+
+        story.append(_subsection_header("3.2  Production mensuelle estimée"))
         chart = build_monthly_production_chart(sim.monthly_production_kwh)
-        story.append(chart)
+        story.append(KeepTogether([chart, Spacer(1, 3 * mm)]))
 
-        # Losses
-        story.append(Paragraph("3.3 Bilan des pertes", s["heading2"]))
-        losses_data = [
-            ["Source de perte", "Valeur (%)"],
-            ["Salissure (soiling)", f"{sim.soiling_loss_pct:.1f}"],
-            ["Mismatch", f"{sim.mismatch_loss_pct:.1f}"],
-            ["Câblage", f"{sim.wiring_loss_pct:.1f}"],
-            ["Disponibilité", f"{sim.availability_loss_pct:.1f}"],
-            ["Température", f"{sim.temperature_loss_pct:.1f}"],
-            ["Total pertes", f"{sim.total_losses_pct:.1f}"],
-        ]
-        story.append(self._build_data_table(losses_data))
+        story.append(_subsection_header("3.3  Bilan des pertes système"))
+        story.append(_data_table([
+            ["Source de perte",        "Valeur (%)"],
+            ["Salissure (soiling)",    f"{sim.soiling_loss_pct:.1f}"],
+            ["Mismatch",               f"{sim.mismatch_loss_pct:.1f}"],
+            ["Câblage DC + AC",        f"{sim.wiring_loss_pct:.1f}"],
+            ["Disponibilité système",  f"{sim.availability_loss_pct:.1f}"],
+            ["Dégradation thermique",  f"{sim.temperature_loss_pct:.1f}"],
+            ["Total pertes estimées",  f"{sim.total_losses_pct:.1f}"],
+        ]))
 
-    # -------------------------------------------------------------------
-    # Section 5 : Analyse économique
-    # -------------------------------------------------------------------
+    # ── Section 4 : Analyse économique ───────────────────────────────────────
+
     def _add_economics(self, story: list) -> None:
-        s = self.styles
         eco = self.report.economics
+        cur = eco.currency
+        story.append(_section_header("4. Analyse économique"))
 
-        story.append(Spacer(1, 5 * mm))
-        story.append(Paragraph("4. Analyse économique", s["heading1"]))
-        story.append(_make_separator())
+        story.append(_subsection_header("4.1  Indicateurs financiers"))
+        story.append(_data_table([
+            ["Indicateur",             "Valeur"],
+            ["CAPEX total",            f"{_fmt(eco.total_cost_xof)} {cur}"],
+            ["Coût par kWc installé",  f"{_fmt(eco.cost_per_kwc_xof)} {cur}/kWc"],
+            ["Économie annuelle (an 1)",f"{_fmt(eco.annual_savings_xof)} {cur}/an"],
+            ["LCOE (25 ans)",          f"{_fmt(eco.lcoe_xof_kwh, 1)} {cur}/kWh"],
+            ["ROI global",             f"{eco.roi_pct:.1f} %"],
+            ["Temps de retour",        f"{eco.payback_years:.1f} ans"],
+            ["VAN 25 ans",             f"{_fmt(eco.npv_xof)} {cur}"],
+        ]))
 
-        story.append(Paragraph("4.1 Indicateurs financiers", s["heading2"]))
-        eco_data = [
-            ["Indicateur", "Valeur"],
-            ["Coût total", f"{_fmt_number(eco.total_cost_xof)} {eco.currency}"],
-            ["Coût par kWc", f"{_fmt_number(eco.cost_per_kwc_xof)} {eco.currency}/kWc"],
-            ["LCOE", f"{_fmt_number(eco.lcoe_xof_kwh, 1)} {eco.currency}/kWh"],
-            ["ROI", f"{eco.roi_pct:.1f}%"],
-            ["Temps de retour", f"{eco.payback_years:.1f} ans"],
-            ["VAN (NPV)", f"{_fmt_number(eco.npv_xof)} {eco.currency}"],
-            ["Économie annuelle", f"{_fmt_number(eco.annual_savings_xof)} {eco.currency}/an"],
-        ]
-        story.append(self._build_data_table(eco_data))
-
-        # Cashflow chart
         if any(v != 0 for v in eco.cashflow_cumulative):
-            story.append(Paragraph("4.2 Flux de trésorerie cumulé (25 ans)", s["heading2"]))
+            story.append(_subsection_header("4.2  Flux de trésorerie cumulé (25 ans)"))
             chart = build_cashflow_chart(eco.cashflow_cumulative)
-            story.append(chart)
+            story.append(KeepTogether([chart, Spacer(1, 3 * mm)]))
 
-    # -------------------------------------------------------------------
-    # Section 6 : Rapport QA
-    # -------------------------------------------------------------------
+    # ── Section 5 : Bilan énergétique ────────────────────────────────────────
+
+    def _add_energy_balance(self, story: list) -> None:
+        r = self.report
+        appliances = getattr(r, "appliances", [])
+        if not appliances:
+            return
+
+        story.append(_section_header("5. Bilan énergétique"))
+        story.append(_subsection_header("5.1  Tableau des consommations"))
+
+        col_w = [CONTENT_W * 0.30, CONTENT_W * 0.08, CONTENT_W * 0.10,
+                 CONTENT_W * 0.12, CONTENT_W * 0.12, CONTENT_W * 0.14, CONTENT_W * 0.14]
+
+        rows = [["Appareil", "Qté", "W", "h/Jour", "h/Nuit", "kWh Jour", "kWh Nuit"]]
+
+        total_day = total_night = 0.0
+        for a in appliances:
+            kwh_d = a.get("qty", 1) * a.get("power", 0) * a.get("hoursDay",   0) / 1000
+            kwh_n = a.get("qty", 1) * a.get("power", 0) * a.get("hoursNight", 0) / 1000
+            total_day   += kwh_d
+            total_night += kwh_n
+            rows.append([
+                a.get("name", "—"),
+                str(a.get("qty", 1)),
+                f"{a.get('power', 0):.0f}",
+                f"{a.get('hoursDay',   0):.1f}",
+                f"{a.get('hoursNight', 0):.1f}",
+                f"{kwh_d:.2f}",
+                f"{kwh_n:.2f}",
+            ])
+
+        rows.append(["Total / jour", "", "", "", "",
+                     f"{total_day:.2f}", f"{total_night:.2f}"])
+
+        t = Table(rows, colWidths=col_w)
+        n = len(rows)
+        cmds = [
+            ("FONTNAME",      (0,  0), (-1,  0),  "Helvetica-Bold"),
+            ("FONTNAME",      (0,  1), (-1, -2),  "Helvetica"),
+            ("FONTNAME",      (0, -1), (-1, -1),  "Helvetica-Bold"),
+            ("FONTSIZE",      (0,  0), (-1, -1),  8),
+            ("TEXTCOLOR",     (0,  0), (-1,  0),  C_WHITE),
+            ("BACKGROUND",    (0,  0), (-1,  0),  C_PRIMARY_DARK),
+            ("BACKGROUND",    (0, -1), (-1, -1),  HexColor("#FEF3C7")),
+            ("ALIGN",         (1,  0), (-1, -1),  "RIGHT"),
+            ("ALIGN",         (0,  0), (0,  -1),  "LEFT"),
+            ("GRID",          (0,  0), (-1, -1),  0.4, C_BORDER),
+            ("TOPPADDING",    (0,  0), (-1, -1),  3),
+            ("BOTTOMPADDING", (0,  0), (-1, -1),  3),
+            ("LEFTPADDING",   (0,  0), (-1, -1),  5),
+            ("RIGHTPADDING",  (0,  0), (-1, -1),  5),
+        ]
+        for i in range(1, n - 1):
+            if i % 2 == 0:
+                cmds.append(("BACKGROUND", (0, i), (-1, i), C_ROW_ALT))
+        t.setStyle(TableStyle(cmds))
+        t.spaceAfter = 4 * mm
+        story.append(t)
+
+        # Totaux
+        body_sm = ParagraphStyle("bsm", fontName="Helvetica", fontSize=9,
+                                 textColor=C_TEXT_SEC, spaceAfter=1 * mm)
+        story.append(Paragraph(
+            f"Consommation journalière totale : "
+            f"<b>{total_day + total_night:.2f} kWh/jour</b>  "
+            f"({total_day:.2f} kWh jour + {total_night:.2f} kWh nuit)",
+            body_sm,
+        ))
+        monthly = (total_day + total_night) * 30
+        story.append(Paragraph(
+            f"Consommation mensuelle estimée : <b>{monthly:.0f} kWh/mois</b>  "
+            f"· Annuelle : <b>{monthly * 12:.0f} kWh/an</b>",
+            body_sm,
+        ))
+
+    # ── Section 6 : Équipements ───────────────────────────────────────────────
+
+    def _add_equipment(self, story: list) -> None:
+        r = self.report
+        equip = getattr(r, "equipment", None)
+        if not equip:
+            return
+
+        story.append(_section_header("6. Équipements du système"))
+
+        inv  = equip.get("inverter", {})
+        bat  = equip.get("battery",  {})
+        capex = equip.get("capex",   {})
+
+        if inv:
+            story.append(_subsection_header("6.1  Onduleur"))
+            inv_rows = [["Paramètre", "Valeur"]]
+            for k, v in inv.items():
+                inv_rows.append([k, str(v)])
+            story.append(_data_table(inv_rows))
+
+        if bat:
+            story.append(_subsection_header("6.2  Stockage batterie"))
+            bat_rows = [["Paramètre", "Valeur"]]
+            for k, v in bat.items():
+                bat_rows.append([k, str(v)])
+            story.append(_data_table(bat_rows))
+
+        if capex:
+            story.append(_subsection_header("6.3  Détail CAPEX"))
+            capex_rows = [["Poste", "Montant (XOF)"]]
+            for k, v in capex.items():
+                capex_rows.append([k, _fmt(float(v))])
+            story.append(_data_table(capex_rows))
+
+    # ── Section 7 : QA ────────────────────────────────────────────────────────
+
     def _add_qa(self, story: list) -> None:
-        s = self.styles
         qa = self.report.qa
-
-        story.append(Spacer(1, 5 * mm))
-        story.append(Paragraph("5. Rapport Qualité & Validation", s["heading1"]))
-        story.append(_make_separator())
+        n_section = 7 if getattr(self.report, "appliances", None) else 6
+        story.append(_section_header(f"{n_section}. Rapport Qualité & Validation"))
 
         if qa.validations:
-            story.append(Paragraph("5.1 Matrice de validation", s["heading2"]))
-            val_data = [["Code", "Critère", "Statut", "Détail"]]
-            for v in qa.validations:
-                val_data.append([v.code, v.label, v.status, v.detail])
-            story.append(self._build_qa_table(val_data))
+            story.append(_subsection_header(f"{n_section}.1  Matrice de validation"))
+            story.append(self._build_qa_table(
+                [["Code", "Critère", "Statut", "Détail"]] +
+                [[v.code, v.label, v.status, v.detail] for v in qa.validations]
+            ))
 
         if qa.edge_cases:
-            story.append(Paragraph("5.2 Cas limites (edge cases)", s["heading2"]))
-            ec_data = [["Code", "Critère", "Statut", "Détail"]]
-            for ec in qa.edge_cases:
-                ec_data.append([ec.code, ec.label, ec.status, ec.detail])
-            story.append(self._build_qa_table(ec_data))
+            story.append(_subsection_header(f"{n_section}.2  Cas limites"))
+            story.append(self._build_qa_table(
+                [["Code", "Critère", "Statut", "Détail"]] +
+                [[e.code, e.label, e.status, e.detail] for e in qa.edge_cases]
+            ))
 
-        # Verdict
+        verdict_color = C_GREEN if qa.verdict == "PASS" else C_RED
+        verdict_style = ParagraphStyle(
+            "verd", fontName="Helvetica-Bold", fontSize=16,
+            textColor=verdict_color, alignment=TA_CENTER, spaceAfter=3 * mm,
+        )
         story.append(Spacer(1, 3 * mm))
-        verdict_color = ReportTheme.SUCCESS if qa.verdict == "PASS" else ReportTheme.ERROR
-        verdict_style = self.styles["kpi_value"].clone(
-            "verdict", textColor=verdict_color, fontSize=18,
-        )
-        story.append(Paragraph(f"Verdict : {qa.verdict}", verdict_style))
-
+        story.append(Paragraph(f"Verdict global : {qa.verdict}", verdict_style))
         if qa.notes:
-            story.append(Spacer(1, 2 * mm))
-            story.append(Paragraph(qa.notes, s["body_small"]))
+            body_sm = ParagraphStyle("bsm2", fontName="Helvetica", fontSize=9,
+                                     textColor=C_TEXT_SEC)
+            story.append(Paragraph(qa.notes, body_sm))
 
-    # -------------------------------------------------------------------
-    # Section 7 : Annexes
-    # -------------------------------------------------------------------
+    # ── Section Annexes ───────────────────────────────────────────────────────
+
     def _add_appendix(self, story: list) -> None:
-        s = self.styles
-
         story.append(PageBreak())
-        story.append(Paragraph("6. Annexes", s["heading1"]))
-        story.append(_make_separator())
+        n_section = 8 if getattr(self.report, "appliances", None) else 7
+        story.append(_section_header(f"{n_section}. Annexes"))
 
-        # pvlib modules
-        story.append(Paragraph("6.1 Modules pvlib utilisés", s["heading2"]))
+        body_sm = ParagraphStyle("bsm3", fontName="Helvetica", fontSize=8,
+                                 textColor=C_TEXT_SEC, spaceAfter=1 * mm, leading=11)
+        mono    = ParagraphStyle("mono", fontName="Courier", fontSize=8,
+                                 textColor=C_TEXT, spaceAfter=1 * mm)
+
+        story.append(_subsection_header("Modules pvlib utilisés"))
         for mod in PVLIB_MODULES:
-            story.append(Paragraph(f"• <font face='Courier' size='8'>{mod}</font>", s["body_small"]))
+            story.append(Paragraph(f"• <font face='Courier'>{mod}</font>", body_sm))
 
-        # Economic constants
-        story.append(Paragraph("6.2 Constantes économiques", s["heading2"]))
+        story.append(_subsection_header("Constantes économiques"))
         for k, v in ECONOMIC_DEFAULTS.items():
-            story.append(Paragraph(
-                f"• <b>{k}</b> : {v}",
-                s["body_small"],
-            ))
+            story.append(Paragraph(f"• <b>{k}</b> : {v}", body_sm))
 
-        # Methodology
-        story.append(Paragraph("6.3 Méthodologie", s["heading2"]))
-        methodology = (
-            "La simulation utilise la chaîne pvlib : récupération des données TMY "
-            "(Typical Meteorological Year) via PVGIS, modélisation du système PV "
-            "avec ModelChain, calcul des pertes (salissure, mismatch, câblage, "
-            "température, disponibilité). L'analyse économique se base sur le tarif "
-            "SENELEC, une dégradation annuelle de 0.5%, et une durée de vie de 25 ans."
-        )
-        story.append(Paragraph(methodology, s["body"]))
+        story.append(_subsection_header("Méthodologie"))
+        story.append(Paragraph(
+            "Simulation pvlib (TMY PVGIS) · ModelChain · Pertes système (salissure, "
+            "mismatch, câblage, température) · Économie SENELEC · Dégradation 0.5 %/an "
+            "· Durée de vie 25 ans · LCOE = CAPEX / Σ(Production_i × (1-dég)^i).",
+            body_sm,
+        ))
 
-        # Formulas
-        story.append(Paragraph("6.4 Formules clés", s["heading2"]))
-        formulas = [
-            ("LCOE", "Coût total / (Σ Production année_i × (1 - dégradation)^i)"),
-            ("ROI", "(Économie totale - Coût) / Coût × 100"),
-            ("Payback", "Année où cashflow cumulé ≥ 0"),
-            ("PR", "Production réelle / Production théorique (STC)"),
-        ]
-        for name, formula in formulas:
-            story.append(Paragraph(
-                f"• <b>{name}</b> = <font face='Courier' size='8'>{formula}</font>",
-                s["body_small"],
-            ))
-
-        # Raw crew output (if available)
         if self.report.raw_crew_output:
             story.append(PageBreak())
-            story.append(Paragraph("6.5 Sortie brute CrewAI", s["heading2"]))
-            # Truncate if very long
+            story.append(_subsection_header("Recommandations IA (CrewAI / Ollama)"))
             raw = self.report.raw_crew_output
             if len(raw) > 5000:
                 raw = raw[:5000] + "\n\n[... tronqué ...]"
             for line in raw.split("\n"):
-                # Escape XML entities for ReportLab
-                line = (line.replace("&", "&amp;")
-                            .replace("<", "&lt;")
-                            .replace(">", "&gt;"))
-                story.append(Paragraph(line or "&nbsp;", s["mono"]))
+                line = (line.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"))
+                story.append(Paragraph(line or "&nbsp;", mono))
 
-    # -------------------------------------------------------------------
-    # Table helpers
-    # -------------------------------------------------------------------
-    def _build_data_table(self, data: list[list[str]]) -> Table:
-        """Construit un tableau 2 colonnes (paramètre / valeur)."""
-        col_w = (PAGE_W - 2 * MARGIN) / 2
-        table = Table(data, colWidths=[col_w, col_w])
-
-        style_cmds = [
-            ("FONTNAME", (0, 0), (-1, 0), ReportTheme.FONT_SANS_BOLD),
-            ("FONTSIZE", (0, 0), (-1, -1), 9),
-            ("TEXTCOLOR", (0, 0), (-1, 0), ReportTheme.TABLE_HEADER_TEXT),
-            ("BACKGROUND", (0, 0), (-1, 0), ReportTheme.TABLE_HEADER_BG),
-            ("ALIGN", (1, 0), (1, -1), "RIGHT"),
-            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-            ("GRID", (0, 0), (-1, -1), 0.5, ReportTheme.BORDER),
-            ("TOPPADDING", (0, 0), (-1, -1), 4),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-            ("LEFTPADDING", (0, 0), (-1, -1), 6),
-            ("RIGHTPADDING", (0, 0), (-1, -1), 6),
-        ]
-        # Alternate row colors
-        for i in range(1, len(data)):
-            if i % 2 == 0:
-                style_cmds.append(
-                    ("BACKGROUND", (0, i), (-1, i), ReportTheme.TABLE_ROW_ALT)
-                )
-
-        table.setStyle(TableStyle(style_cmds))
-        return table
+    # ── QA table helper ───────────────────────────────────────────────────────
 
     def _build_qa_table(self, data: list[list[str]]) -> Table:
-        """Construit un tableau QA avec coloration PASS/FAIL."""
-        col_widths = [18 * mm, 60 * mm, 20 * mm, None]
-        # Calculate last column
-        remaining = PAGE_W - 2 * MARGIN - sum(w for w in col_widths if w)
-        col_widths[-1] = remaining
-
-        table = Table(data, colWidths=col_widths)
-
-        style_cmds = [
-            ("FONTNAME", (0, 0), (-1, 0), ReportTheme.FONT_SANS_BOLD),
-            ("FONTSIZE", (0, 0), (-1, -1), 8),
-            ("TEXTCOLOR", (0, 0), (-1, 0), ReportTheme.TABLE_HEADER_TEXT),
-            ("BACKGROUND", (0, 0), (-1, 0), ReportTheme.TABLE_HEADER_BG),
-            ("ALIGN", (2, 0), (2, -1), "CENTER"),
-            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-            ("GRID", (0, 0), (-1, -1), 0.5, ReportTheme.BORDER),
-            ("TOPPADDING", (0, 0), (-1, -1), 3),
+        avail = CONTENT_W
+        col_w = [18 * mm, avail - 18 * mm - 22 * mm - 60 * mm, 22 * mm, 60 * mm]
+        t = Table(data, colWidths=col_w)
+        cmds = [
+            ("FONTNAME",      (0, 0), (-1,  0), "Helvetica-Bold"),
+            ("FONTNAME",      (0, 1), (-1, -1), "Helvetica"),
+            ("FONTSIZE",      (0, 0), (-1, -1), 8),
+            ("TEXTCOLOR",     (0, 0), (-1,  0), C_WHITE),
+            ("BACKGROUND",    (0, 0), (-1,  0), C_PRIMARY_DARK),
+            ("ALIGN",         (2, 0), (2,  -1), "CENTER"),
+            ("VALIGN",        (0, 0), (-1, -1), "MIDDLE"),
+            ("GRID",          (0, 0), (-1, -1), 0.4, C_BORDER),
+            ("TOPPADDING",    (0, 0), (-1, -1), 3),
             ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
-            ("LEFTPADDING", (0, 0), (-1, -1), 4),
-            ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+            ("LEFTPADDING",   (0, 0), (-1, -1), 5),
+            ("RIGHTPADDING",  (0, 0), (-1, -1), 5),
         ]
-
-        # Color-code status cells
         for i in range(1, len(data)):
             status = data[i][2] if len(data[i]) > 2 else ""
-            if status == "PASS":
-                style_cmds.append(
-                    ("TEXTCOLOR", (2, i), (2, i), ReportTheme.SUCCESS)
-                )
-            elif status == "FAIL":
-                style_cmds.append(
-                    ("TEXTCOLOR", (2, i), (2, i), ReportTheme.ERROR)
-                )
-            elif status == "WARNING":
-                style_cmds.append(
-                    ("TEXTCOLOR", (2, i), (2, i), ReportTheme.WARNING)
-                )
+            color  = (C_GREEN if status == "PASS"
+                      else C_RED if status == "FAIL"
+                      else HexColor("#F97316") if status == "WARNING"
+                      else C_TEXT_SEC)
+            cmds.append(("TEXTCOLOR", (2, i), (2, i), color))
+            cmds.append(("FONTNAME",  (2, i), (2, i), "Helvetica-Bold"))
             if i % 2 == 0:
-                style_cmds.append(
-                    ("BACKGROUND", (0, i), (-1, i), ReportTheme.TABLE_ROW_ALT)
-                )
-
-        table.setStyle(TableStyle(style_cmds))
-        return table
+                cmds.append(("BACKGROUND", (0, i), (-1, i), C_ROW_ALT))
+        t.setStyle(TableStyle(cmds))
+        t.spaceAfter = 4 * mm
+        return t
