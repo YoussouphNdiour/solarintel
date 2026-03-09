@@ -183,46 +183,61 @@
         .status-dot.online { background: #22C55E; }
         .status-dot.offline { background: #EF4444; }
 
-        /* ── MAP SEARCH WIDGET OVERRIDE ───────────────────────── */
-        .esri-search {
-            background: rgba(15,23,42,0.92) !important;
-            backdrop-filter: blur(12px);
-            -webkit-backdrop-filter: blur(12px);
-            border: 1px solid #334155 !important;
-            border-radius: 0.75rem !important;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.45) !important;
-            overflow: hidden;
+        /* ── MAP SEARCH BAR ────────────────────────────────────── */
+        .map-searchbar {
+            position: absolute; top: 1rem; left: 50%; transform: translateX(-50%);
+            z-index: 20; width: min(340px, calc(100% - 11rem));
+            display: flex; flex-direction: column; gap: 0;
         }
-        .esri-search__form { border-bottom: none !important; }
-        .esri-search__input {
-            background: transparent !important;
-            color: #F8FAFC !important;
-            font-size: 0.8rem !important;
-            font-family: inherit !important;
+        .map-search-input-wrap {
+            display: flex; align-items: center; gap: 0.5rem;
+            background: rgba(15,23,42,0.93); backdrop-filter: blur(14px);
+            -webkit-backdrop-filter: blur(14px);
+            border: 1px solid #334155; border-radius: 0.75rem;
+            padding: 0.45rem 0.65rem;
+            box-shadow: 0 4px 24px rgba(0,0,0,0.5);
+            transition: border-color 0.15s;
         }
-        .esri-search__input::placeholder { color: #64748B !important; }
-        .esri-search__submit-button,
-        .esri-search__clear-button {
-            background: transparent !important;
-            color: #64748B !important;
+        .map-search-input-wrap:focus-within {
+            border-color: rgba(14,165,233,0.6);
+            box-shadow: 0 4px 24px rgba(0,0,0,0.5), 0 0 0 2px rgba(14,165,233,0.12);
         }
-        .esri-search__submit-button:hover,
-        .esri-search__clear-button:hover { color: #38BDF8 !important; }
-        .esri-search__suggestions-menu {
-            background: rgba(15,23,42,0.97) !important;
-            border: 1px solid #334155 !important;
-            border-radius: 0 0 0.75rem 0.75rem !important;
+        .map-search-icon { color: #64748B; flex-shrink: 0; }
+        .map-search-input {
+            flex: 1; background: transparent; border: none; outline: none;
+            color: #F8FAFC; font-size: 0.8rem; font-family: inherit;
+            min-width: 0;
         }
-        .esri-search__suggestion-item {
-            color: #CBD5E1 !important;
-            font-size: 0.78rem !important;
+        .map-search-input::placeholder { color: #475569; }
+        .map-search-clear {
+            background: none; border: none; cursor: pointer; padding: 0;
+            color: #475569; display: none; line-height: 1;
         }
-        .esri-search__suggestion-item:hover,
-        .esri-search__suggestion-item:focus {
-            background: rgba(14,165,233,0.12) !important;
-            color: #38BDF8 !important;
+        .map-search-clear:hover { color: #F8FAFC; }
+        .map-search-results {
+            background: rgba(15,23,42,0.97); backdrop-filter: blur(14px);
+            -webkit-backdrop-filter: blur(14px);
+            border: 1px solid #334155; border-top: none;
+            border-radius: 0 0 0.75rem 0.75rem;
+            overflow: hidden; display: none;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.5);
         }
-        .esri-search__no-value-text { color: #64748B !important; font-size: 0.75rem !important; }
+        .map-search-results.open { display: block; }
+        .map-search-item {
+            display: flex; align-items: flex-start; gap: 0.5rem;
+            padding: 0.55rem 0.75rem; cursor: pointer;
+            border-bottom: 1px solid #1E293B;
+            transition: background 0.1s;
+        }
+        .map-search-item:last-child { border-bottom: none; }
+        .map-search-item:hover { background: rgba(14,165,233,0.1); }
+        .map-search-item-icon { color: #0EA5E9; flex-shrink: 0; margin-top: 1px; }
+        .map-search-item-text { display: flex; flex-direction: column; gap: 0.1rem; min-width: 0; }
+        .map-search-item-name { color: #F1F5F9; font-size: 0.78rem; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .map-search-item-sub  { color: #64748B; font-size: 0.7rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .map-search-item.selected { background: rgba(14,165,233,0.1); }
+        .map-search-empty { padding: 0.75rem; color: #64748B; font-size: 0.75rem; text-align: center; }
+        .map-search-loading { padding: 0.6rem 0.75rem; color: #64748B; font-size: 0.75rem; display: flex; align-items: center; gap: 0.4rem; }
 
         /* ── MAP TOOLBAR ───────────────────────────────────────── */
         .map-toolbar {
@@ -720,6 +735,16 @@
         <!-- RIGHT PANEL: ArcGIS Map -->
         <div class="flex-1 relative">
             <div id="mapDiv"></div>
+
+            <!-- Search bar (top-center) -->
+            <div class="map-searchbar" id="mapSearchbar">
+                <div class="map-search-input-wrap">
+                    <svg class="map-search-icon w-4 h-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                    <input class="map-search-input" id="mapSearchInput" type="text" placeholder="Rechercher une adresse, un lieu…" autocomplete="off" spellcheck="false">
+                    <button class="map-search-clear" id="mapSearchClear" onclick="clearMapSearch()" title="Effacer">✕</button>
+                </div>
+                <div class="map-search-results" id="mapSearchResults"></div>
+            </div>
 
             <!-- Map Toolbar (top-left) -->
             <div class="map-toolbar" id="mapToolbar">
@@ -1616,14 +1641,13 @@ require([
     "esri/Map",
     "esri/views/MapView",
     "esri/widgets/Sketch",
-    "esri/widgets/Search",
     "esri/geometry/geometryEngine",
     "esri/layers/GraphicsLayer",
     "esri/Graphic",
     "esri/geometry/Polygon",
     "esri/geometry/Point",
     "esri/geometry/support/webMercatorUtils",
-], function(Map, MapView, Sketch, Search, geometryEngine, GraphicsLayer, Graphic, Polygon, Point, webMercatorUtils) {
+], function(Map, MapView, Sketch, geometryEngine, GraphicsLayer, Graphic, Polygon, Point, webMercatorUtils) {
 
     geometryEngineRef = geometryEngine;
     GraphicRef = Graphic;
@@ -1663,23 +1687,6 @@ require([
             },
         });
         mapView.ui.add(sketchWidget, "top-right");
-
-        // ── Search widget ──────────────────────────────────────────
-        const searchWidget = new Search({
-            view: mapView,
-            allPlaceholder: "Rechercher une adresse, un lieu…",
-            includeDefaultSources: true,
-            popupEnabled: false,
-            resultGraphicEnabled: false,
-            goToOverride: function(view, options) {
-                // Zoom close enough to see rooftops clearly
-                return view.goTo({
-                    target: options.target.target || options.target,
-                    zoom: 19,
-                }, { duration: 800, easing: "ease-in-out" });
-            },
-        });
-        mapView.ui.add(searchWidget, { position: "top-center", index: 0 });
 
         // Hide draw hint once user starts drawing
         sketchWidget.on("create", function(event) {
@@ -2218,6 +2225,148 @@ function _setWfStep(n, state) {
     lbl.className = 'wf-lbl' + (state ? ' ' + state : '');
     num.textContent = state === 'done' ? '✓' : n;
 }
+
+// =========================================================================
+// MAP SEARCH (Nominatim / OpenStreetMap)
+// =========================================================================
+(function() {
+    var _searchTimer = null;
+    var _lastQuery   = '';
+
+    var input   = null;
+    var results = null;
+    var clearBtn = null;
+
+    function _init() {
+        input    = document.getElementById('mapSearchInput');
+        results  = document.getElementById('mapSearchResults');
+        clearBtn = document.getElementById('mapSearchClear');
+        if (!input) return;
+
+        input.addEventListener('input', function() {
+            var q = input.value.trim();
+            clearBtn.style.display = q ? 'block' : 'none';
+            if (q.length < 3) { _closeResults(); return; }
+            if (q === _lastQuery) return;
+            clearTimeout(_searchTimer);
+            _searchTimer = setTimeout(function() { _search(q); }, 350);
+        });
+
+        input.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') { clearMapSearch(); return; }
+            if (e.key === 'Enter') {
+                var first = results.querySelector('.map-search-item');
+                if (first) first.click();
+            }
+            // Arrow key navigation
+            if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                e.preventDefault();
+                var items = Array.from(results.querySelectorAll('.map-search-item'));
+                var active = results.querySelector('.map-search-item.selected');
+                var idx = items.indexOf(active);
+                if (e.key === 'ArrowDown') idx = Math.min(idx + 1, items.length - 1);
+                else idx = Math.max(idx - 1, 0);
+                items.forEach(function(el) { el.classList.remove('selected'); });
+                if (items[idx]) {
+                    items[idx].classList.add('selected');
+                    items[idx].scrollIntoView({ block: 'nearest' });
+                }
+            }
+        });
+
+        // Close when clicking outside
+        document.addEventListener('click', function(e) {
+            var bar = document.getElementById('mapSearchbar');
+            if (bar && !bar.contains(e.target)) _closeResults();
+        });
+    }
+
+    function _search(query) {
+        _lastQuery = query;
+        _showLoading();
+        var url = 'https://nominatim.openstreetmap.org/search?format=json&q='
+            + encodeURIComponent(query)
+            + '&limit=6&addressdetails=1&accept-language=fr';
+
+        fetch(url, { headers: { 'Accept-Language': 'fr' } })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (input.value.trim() !== query) return; // stale
+                _renderResults(data);
+            })
+            .catch(function() { _renderEmpty(); });
+    }
+
+    function _renderResults(items) {
+        results.innerHTML = '';
+        if (!items || items.length === 0) { _renderEmpty(); return; }
+        items.forEach(function(item) {
+            var displayName = item.display_name || '';
+            // Split name and sub-address
+            var parts = displayName.split(',');
+            var name = parts[0].trim();
+            var sub  = parts.slice(1, 3).join(',').trim();
+
+            var div = document.createElement('div');
+            div.className = 'map-search-item';
+            div.innerHTML =
+                '<svg class="map-search-item-icon w-3.5 h-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>'
+                + '<div class="map-search-item-text">'
+                + '<span class="map-search-item-name">' + _esc(name) + '</span>'
+                + (sub ? '<span class="map-search-item-sub">' + _esc(sub) + '</span>' : '')
+                + '</div>';
+
+            div.addEventListener('click', function() {
+                var lat = parseFloat(item.lat);
+                var lon = parseFloat(item.lon);
+                _navigateTo(lat, lon, displayName);
+            });
+            results.appendChild(div);
+        });
+        results.classList.add('open');
+    }
+
+    function _navigateTo(lat, lon, label) {
+        input.value = label.split(',').slice(0,2).join(',').trim();
+        clearBtn.style.display = 'block';
+        _closeResults();
+        if (mapView) {
+            mapView.goTo({ center: [lon, lat], zoom: 19 }, { duration: 800 });
+        }
+    }
+
+    function _renderEmpty() {
+        results.innerHTML = '<div class="map-search-empty">Aucun résultat trouvé</div>';
+        results.classList.add('open');
+    }
+
+    function _showLoading() {
+        results.innerHTML =
+            '<div class="map-search-loading">'
+            + '<svg class="w-3.5 h-3.5 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" opacity="0.25"/><path fill="currentColor" opacity="0.75" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg>'
+            + 'Recherche en cours…</div>';
+        results.classList.add('open');
+    }
+
+    function _closeResults() {
+        if (results) { results.classList.remove('open'); results.innerHTML = ''; }
+    }
+
+    function _esc(str) {
+        return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+
+    // Public
+    window.clearMapSearch = function() {
+        if (input) { input.value = ''; input.focus(); }
+        if (clearBtn) clearBtn.style.display = 'none';
+        _closeResults();
+        _lastQuery = '';
+    };
+
+    // Init after DOM ready
+    document.addEventListener('DOMContentLoaded', _init);
+})();
 
 // =========================================================================
 // INIT
