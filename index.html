@@ -183,6 +183,47 @@
         .status-dot.online { background: #22C55E; }
         .status-dot.offline { background: #EF4444; }
 
+        /* ── MAP SEARCH WIDGET OVERRIDE ───────────────────────── */
+        .esri-search {
+            background: rgba(15,23,42,0.92) !important;
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid #334155 !important;
+            border-radius: 0.75rem !important;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.45) !important;
+            overflow: hidden;
+        }
+        .esri-search__form { border-bottom: none !important; }
+        .esri-search__input {
+            background: transparent !important;
+            color: #F8FAFC !important;
+            font-size: 0.8rem !important;
+            font-family: inherit !important;
+        }
+        .esri-search__input::placeholder { color: #64748B !important; }
+        .esri-search__submit-button,
+        .esri-search__clear-button {
+            background: transparent !important;
+            color: #64748B !important;
+        }
+        .esri-search__submit-button:hover,
+        .esri-search__clear-button:hover { color: #38BDF8 !important; }
+        .esri-search__suggestions-menu {
+            background: rgba(15,23,42,0.97) !important;
+            border: 1px solid #334155 !important;
+            border-radius: 0 0 0.75rem 0.75rem !important;
+        }
+        .esri-search__suggestion-item {
+            color: #CBD5E1 !important;
+            font-size: 0.78rem !important;
+        }
+        .esri-search__suggestion-item:hover,
+        .esri-search__suggestion-item:focus {
+            background: rgba(14,165,233,0.12) !important;
+            color: #38BDF8 !important;
+        }
+        .esri-search__no-value-text { color: #64748B !important; font-size: 0.75rem !important; }
+
         /* ── MAP TOOLBAR ───────────────────────────────────────── */
         .map-toolbar {
             position: absolute; top: 1rem; left: 1rem; z-index: 10;
@@ -1575,13 +1616,14 @@ require([
     "esri/Map",
     "esri/views/MapView",
     "esri/widgets/Sketch",
+    "esri/widgets/Search",
     "esri/geometry/geometryEngine",
     "esri/layers/GraphicsLayer",
     "esri/Graphic",
     "esri/geometry/Polygon",
     "esri/geometry/Point",
     "esri/geometry/support/webMercatorUtils",
-], function(Map, MapView, Sketch, geometryEngine, GraphicsLayer, Graphic, Polygon, Point, webMercatorUtils) {
+], function(Map, MapView, Sketch, Search, geometryEngine, GraphicsLayer, Graphic, Polygon, Point, webMercatorUtils) {
 
     geometryEngineRef = geometryEngine;
     GraphicRef = Graphic;
@@ -1621,6 +1663,23 @@ require([
             },
         });
         mapView.ui.add(sketchWidget, "top-right");
+
+        // ── Search widget ──────────────────────────────────────────
+        const searchWidget = new Search({
+            view: mapView,
+            allPlaceholder: "Rechercher une adresse, un lieu…",
+            includeDefaultSources: true,
+            popupEnabled: false,
+            resultGraphicEnabled: false,
+            goToOverride: function(view, options) {
+                // Zoom close enough to see rooftops clearly
+                return view.goTo({
+                    target: options.target.target || options.target,
+                    zoom: 19,
+                }, { duration: 800, easing: "ease-in-out" });
+            },
+        });
+        mapView.ui.add(searchWidget, { position: "top-center", index: 0 });
 
         // Hide draw hint once user starts drawing
         sketchWidget.on("create", function(event) {
