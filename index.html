@@ -1639,6 +1639,15 @@ require([
         });
 
         sketchWidget.on("update", function(event) {
+            // Ignore sketch update events when not actively in draw-zone mode.
+            // This prevents clicking the zone polygon in add/select/delete modes
+            // from triggering generateCalpinage() and erasing manually added panels.
+            if (mapMode !== 'draw-zone') {
+                if (event.state === 'start' || event.state === 'active') {
+                    sketchWidget.cancel();
+                }
+                return;
+            }
             if (event.state === "complete" && event.graphics.length > 0) {
                 handlePolygonUpdate(event.graphics[0].geometry);
             }
@@ -1943,7 +1952,10 @@ function setMapMode(mode) {
     const hintEl = document.getElementById('drawHintText');
     if (hintEl) hintEl.textContent = hintMap[mode] || '';
     const drawHint = document.getElementById('drawHint');
-    if (drawHint) drawHint.style.display = 'flex';
+    // Show hint only in draw-zone mode (or if no polygon drawn yet)
+    if (drawHint) {
+        drawHint.style.display = (mode === 'draw-zone' || !STATE.polygon) ? 'flex' : 'none';
+    }
 
     // Map cursor
     if (mapView && mapView.container) {
@@ -1952,8 +1964,12 @@ function setMapMode(mode) {
         else mapView.container.style.cursor = '';
     }
 
-    // Cancel any active sketch when leaving draw-zone
-    if (mode !== 'draw-zone' && sketchWidget) sketchWidget.cancel();
+    // Cancel any active sketch when leaving draw-zone, and prevent the
+    // Sketch widget from intercepting map clicks in non-draw-zone modes.
+    if (sketchWidget) {
+        sketchWidget.updateOnGraphicClick = (mode === 'draw-zone');
+        if (mode !== 'draw-zone') sketchWidget.cancel();
+    }
 
     _safeCreateIcons();
 }
@@ -1995,16 +2011,18 @@ function addPanelAt(mapPoint) {
     panelLayer.add(g);
     panelHistory.push({ action: 'add', graphics: [g] });
     _setUndoEnabled(true);
-    STATE.panelCount = panelLayer.graphics.length;
+    _state.panelCount = panelLayer.graphics.length;  // bypass proxy to avoid double KPI recalc
+    updatePanelBadge();
+    updateKPIs();
     document.getElementById('toolClear').disabled = false;
 
-    // Brief flash on added panel
+    // Brief green flash on added panel
     g.symbol = { type:'simple-fill', color:[34,197,94,0.35], outline:{color:[34,197,94,0.9],width:1.5} };
     setTimeout(function() {
-        if (panelLayer.graphics.includes(g)) {
+        if (panelLayer.graphics.indexOf(g) !== -1) {
             g.symbol = { type:'simple-fill', color:[14,165,233,0.25], outline:{color:[14,165,233,0.8],width:0.75} };
         }
-    }, 400);
+    }, 500);
 }
 
 // =========================================================================
@@ -2014,8 +2032,10 @@ function deletePanel(graphic) {
     panelLayer.remove(graphic);
     panelHistory.push({ action: 'delete', graphics: [graphic] });
     _setUndoEnabled(true);
-    STATE.panelCount = panelLayer.graphics.length;
-    if (STATE.panelCount === 0) document.getElementById('toolClear').disabled = true;
+    _state.panelCount = panelLayer.graphics.length;
+    updatePanelBadge();
+    updateKPIs();
+    if (_state.panelCount === 0) document.getElementById('toolClear').disabled = true;
 }
 
 function deleteSelectedPanel() {
@@ -2067,7 +2087,9 @@ function undoLastPanel() {
     } else if (last.action === 'delete') {
         last.graphics.forEach(function(g) { panelLayer.add(g); });
     }
-    STATE.panelCount = panelLayer.graphics.length;
+    _state.panelCount = panelLayer.graphics.length;
+    updatePanelBadge();
+    updateKPIs();
     _setUndoEnabled(panelHistory.length > 0);
     document.getElementById('toolClear').disabled = (panelLayer.graphics.length === 0);
     closePanelPopup();
@@ -2082,7 +2104,9 @@ function clearAllPanels() {
         panelHistory.push({ action: 'delete', graphics: all });
         _setUndoEnabled(true);
     }
-    STATE.panelCount = 0;
+    _state.panelCount = 0;
+    updatePanelBadge();
+    updateKPIs();
     document.getElementById('toolClear').disabled = true;
     closePanelPopup();
 }
