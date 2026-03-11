@@ -175,94 +175,172 @@ def _kpi_table(kpis: list[tuple[str, str, str]]) -> Table:
 
 # ── Page callbacks ────────────────────────────────────────────────────────────
 
+def _draw_solar_grid(canvas, x, y, w, h, color, alpha=0.06):
+    """Dessine une grille de panneaux solaires stylisée (fond décoratif)."""
+    canvas.saveState()
+    canvas.setFillColor(color)
+    cell = 12 * mm
+    cols = int(w / cell) + 1
+    rows = int(h / cell) + 1
+    canvas.setFillAlpha(alpha)
+    for row in range(rows):
+        for col in range(cols):
+            cx = x + col * cell
+            cy = y + row * cell
+            # Panel rectangle with slight rounding effect (inner rect)
+            canvas.rect(cx + 1, cy + 1, cell - 2, cell - 2, fill=1, stroke=0)
+            # Separator lines (darker)
+            canvas.setFillAlpha(alpha * 0.5)
+            canvas.rect(cx + 1, cy + cell // 2, cell - 2, 0.5, fill=1, stroke=0)
+            canvas.rect(cx + cell // 2, cy + 1, 0.5, cell - 2, fill=1, stroke=0)
+            canvas.setFillAlpha(alpha)
+    canvas.restoreState()
+
+
+def _draw_kpi_badge(canvas, x, y, w, h, value, label, color):
+    """Dessine un badge KPI rectangulaire arrondi sur le canvas."""
+    canvas.saveState()
+    # Background card
+    canvas.setFillColor(HexColor("#1E3A5F"))
+    canvas.roundRect(x, y, w, h, 3 * mm, fill=1, stroke=0)
+    # Accent top bar
+    canvas.setFillColor(color)
+    canvas.roundRect(x, y + h - 2 * mm, w, 2 * mm, 1 * mm, fill=1, stroke=0)
+    # Value (may have actual newline for unit)
+    lines = value.split("\n")
+    canvas.setFillColor(color)
+    if len(lines) >= 2:
+        canvas.setFont("Helvetica-Bold", 11)
+        canvas.drawCentredString(x + w / 2, y + h * 0.52, lines[0])
+        canvas.setFont("Helvetica", 7)
+        canvas.setFillColor(HexColor("#94A3B8"))
+        canvas.drawCentredString(x + w / 2, y + h * 0.37, lines[1])
+    else:
+        canvas.setFont("Helvetica-Bold", 12)
+        canvas.drawCentredString(x + w / 2, y + h * 0.42, lines[0])
+    # Label
+    canvas.setFont("Helvetica", 6.5)
+    canvas.setFillColor(HexColor("#64748B"))
+    canvas.drawCentredString(x + w / 2, y + h * 0.18, label)
+    canvas.restoreState()
+
+
 def _cover_callback(canvas, doc):
     """Dessine la page de garde complète directement sur le canvas."""
     canvas.saveState()
     W, H = PAGE_W, PAGE_H
 
-    # ── Fond sombre (3/4 supérieur) ──────────────────────────────────────────
+    # ── Fond principal (dégradé simulé avec rectangles) ──────────────────────
     canvas.setFillColor(C_NAVY)
-    canvas.rect(0, H * 0.28, W, H * 0.72, fill=1, stroke=0)
+    canvas.rect(0, 0, W, H, fill=1, stroke=0)
 
-    # ── Fond clair (1/4 inférieur) ───────────────────────────────────────────
-    canvas.setFillColor(C_SURFACE)
-    canvas.rect(0, 0, W, H * 0.28, fill=1, stroke=0)
+    # Bande supérieure légèrement différente
+    canvas.setFillColor(HexColor("#0A1628"))
+    canvas.rect(0, H * 0.55, W, H * 0.45, fill=1, stroke=0)
 
-    # ── Bande accent (amber) ──────────────────────────────────────────────────
-    canvas.setFillColor(C_AMBER)
-    canvas.rect(0, H * 0.28 - 3 * mm, W, 3 * mm, fill=1, stroke=0)
+    # ── Grille de panneaux (décor) ────────────────────────────────────────────
+    _draw_solar_grid(canvas, 0, H * 0.28, W, H * 0.45, C_PRIMARY, alpha=0.055)
 
-    # ── Bande bleue supérieure ────────────────────────────────────────────────
+    # ── Bande header bleue foncée ─────────────────────────────────────────────
     canvas.setFillColor(C_PRIMARY_DARK)
-    canvas.rect(0, H - 18 * mm, W, 18 * mm, fill=1, stroke=0)
+    canvas.rect(0, H - 20 * mm, W, 20 * mm, fill=1, stroke=0)
 
-    # ── Barre verticale gauche (accent) ───────────────────────────────────────
+    # ── Ligne accent amber sous le header ────────────────────────────────────
+    canvas.setFillColor(C_AMBER)
+    canvas.rect(0, H - 20 * mm - 1.5 * mm, W, 1.5 * mm, fill=1, stroke=0)
+
+    # ── Barre verticale gauche ────────────────────────────────────────────────
     canvas.setFillColor(C_PRIMARY)
-    canvas.rect(0, 0, 5 * mm, H, fill=1, stroke=0)
+    canvas.rect(0, 0, 6 * mm, H, fill=1, stroke=0)
 
-    # ── Logo (top-right dans la bande bleue) ──────────────────────────────────
+    # ── Logo dans le header ───────────────────────────────────────────────────
     logo = getattr(doc, "_logo_path", None)
+    logo_end_x = MARGIN + 6 * mm   # after sidebar
     if logo and os.path.isfile(logo):
         try:
+            logo_size = 14 * mm
             canvas.drawImage(
                 logo,
-                W - 20 * mm - 12 * mm, H - 16 * mm,
-                width=14 * mm, height=14 * mm,
+                logo_end_x + 2 * mm, H - 18 * mm,
+                width=logo_size, height=logo_size,
                 preserveAspectRatio=True, mask="auto",
             )
+            logo_end_x += logo_size + 4 * mm
         except Exception:
             pass
 
-    # ── Nom de l'entreprise (bande bleue) ────────────────────────────────────
+    # ── Nom entreprise dans le header ─────────────────────────────────────────
     company = getattr(doc, "_company_name", "SolarIntel")
-    canvas.setFont("Helvetica-Bold", 11)
+    canvas.setFont("Helvetica-Bold", 13)
     canvas.setFillColor(C_WHITE)
-    canvas.drawString(12 * mm, H - 12 * mm, company)
+    canvas.drawString(logo_end_x, H - 11 * mm, company)
 
     canvas.setFont("Helvetica", 8)
     canvas.setFillColor(HexColor("#93C5FD"))
-    canvas.drawString(12 * mm, H - 17 * mm, "Dimensionnement Photovoltaïque")
+    canvas.drawString(logo_end_x, H - 17 * mm, "Dimensionnement Photovoltaïque · Intelligence Solaire")
 
-    # ── Numéro de page couverture (bande bleue, droite) ───────────────────────
-    canvas.setFont("Helvetica", 8)
+    canvas.setFont("Helvetica", 7)
     canvas.setFillColor(HexColor("#64748B"))
-    canvas.drawRightString(W - 8 * mm, H - 17 * mm, "Confidentiel")
+    canvas.drawRightString(W - 8 * mm, H - 11 * mm, "CONFIDENTIEL")
+    canvas.drawRightString(W - 8 * mm, H - 17 * mm, date.today().strftime("%d/%m/%Y"))
 
-    # ── Titre principal ───────────────────────────────────────────────────────
+    # ── Zone titre (milieu haut) ──────────────────────────────────────────────
+    title_y = H * 0.68
     title = getattr(doc, "_report_title", "Rapport de Dimensionnement Solaire")
-    canvas.setFont("Helvetica-Bold", 26)
-    canvas.setFillColor(C_WHITE)
-    # Wrap manual si trop long
     if len(title) > 38:
         mid = title[:38].rfind(" ")
-        _draw_centered_text(canvas, title[:mid],  "Helvetica-Bold", 26, C_WHITE, W, H * 0.72)
-        _draw_centered_text(canvas, title[mid+1:], "Helvetica-Bold", 22, C_WHITE, W, H * 0.72 - 18 * mm)
+        _draw_centered_text(canvas, title[:mid],  "Helvetica-Bold", 28, C_WHITE, W, title_y)
+        _draw_centered_text(canvas, title[mid+1:], "Helvetica-Bold", 22, C_WHITE, W, title_y - 18 * mm)
     else:
-        _draw_centered_text(canvas, title, "Helvetica-Bold", 26, C_WHITE, W, H * 0.72)
+        _draw_centered_text(canvas, title, "Helvetica-Bold", 28, C_WHITE, W, title_y)
 
-    # ── Icône soleil (décoratif) ───────────────────────────────────────────────
-    canvas.setFont("Helvetica-Bold", 48)
-    canvas.setFillColor(HexColor("#1E3A5F"))
-    canvas.drawRightString(W - 8 * mm, H * 0.35, "☀")
+    # Sous-titre
+    _draw_centered_text(canvas, "Rapport d'étude — Simulation pvlib & Analyse économique",
+                        "Helvetica", 10, HexColor("#93C5FD"), W, title_y - 20 * mm)
 
-    # ── Puissance système (highlight amber) ───────────────────────────────────
+    # ── Ligne séparatrice dorée ────────────────────────────────────────────────
+    line_y = title_y - 26 * mm
+    canvas.setStrokeColor(C_AMBER)
+    canvas.setLineWidth(1)
+    canvas.line(MARGIN + 6 * mm, line_y, W / 2 - 15 * mm, line_y)
+    canvas.line(W / 2 + 15 * mm, line_y, W - MARGIN, line_y)
+    # Sun icon center
+    canvas.setFont("Helvetica-Bold", 16)
+    canvas.setFillColor(C_AMBER)
+    canvas.drawCentredString(W / 2, line_y - 4, "☀")
+
+    # ── Système info (amber) ──────────────────────────────────────────────────
     sys_info = getattr(doc, "_sys_info", "")
     if sys_info:
-        canvas.setFont("Helvetica-Bold", 16)
-        canvas.setFillColor(C_AMBER)
-        _draw_centered_text(canvas, sys_info, "Helvetica-Bold", 16, C_AMBER, W, H * 0.72 - 32 * mm)
+        _draw_centered_text(canvas, sys_info, "Helvetica-Bold", 13, C_AMBER, W, line_y - 16 * mm)
 
-    # ── Section client (fond clair) ───────────────────────────────────────────
-    x_info = 12 * mm
+    # ── 4 KPI badges ─────────────────────────────────────────────────────────
+    kpi_data = getattr(doc, "_cover_kpis", [])
+    if kpi_data:
+        badge_w = (W - MARGIN * 2 - 6 * mm - 9 * mm) / 4
+        badge_h = 18 * mm
+        badge_y = H * 0.28 + 3 * mm
+        badge_x = MARGIN + 6 * mm
+        for i, (val, lbl, col) in enumerate(kpi_data):
+            _draw_kpi_badge(canvas, badge_x + i * (badge_w + 3 * mm), badge_y,
+                            badge_w, badge_h, val, lbl, HexColor(col))
+
+    # ── Section client (fond légèrement différent) ────────────────────────────
+    client_bg_y = 12 * mm
+    client_bg_h = H * 0.28 - 12 * mm
+    canvas.setFillColor(HexColor("#0D1B2E"))
+    canvas.rect(6 * mm, client_bg_y, W - 6 * mm, client_bg_h, fill=1, stroke=0)
+
+    x_info = MARGIN + 6 * mm
     y_base = H * 0.28 - 10 * mm
 
     def _info_line(label: str, value: str, y: float):
         canvas.setFont("Helvetica-Bold", 8)
-        canvas.setFillColor(C_TEXT_SEC)
+        canvas.setFillColor(C_TEXT_LIGHT)
         canvas.drawString(x_info, y, label)
-        canvas.setFont("Helvetica", 9)
-        canvas.setFillColor(C_TEXT)
-        canvas.drawString(x_info + 28 * mm, y, value)
+        canvas.setFont("Helvetica-Bold", 9)
+        canvas.setFillColor(C_WHITE)
+        canvas.drawString(x_info + 30 * mm, y, value)
 
     client_name = getattr(doc, "_client_name", "")
     location    = getattr(doc, "_location",    "")
@@ -270,19 +348,21 @@ def _cover_callback(canvas, doc):
 
     if client_name:
         _info_line("Client :",   client_name, y_base)
-        y_base -= 7 * mm
+        y_base -= 8 * mm
     if location:
         _info_line("Site :",     location,    y_base)
-        y_base -= 7 * mm
-    _info_line("Date :",         gen_date,    y_base)
+        y_base -= 8 * mm
+    _info_line("Établi le :",    gen_date,    y_base)
 
-    # ── Pied de page couverture ───────────────────────────────────────────────
+    # ── Pied de page ──────────────────────────────────────────────────────────
     canvas.setFillColor(C_PRIMARY_DARK)
-    canvas.rect(0, 0, W, 6 * mm, fill=1, stroke=0)
+    canvas.rect(0, 0, W, 12 * mm, fill=1, stroke=0)
+    canvas.setFillColor(C_AMBER)
+    canvas.rect(0, 12 * mm - 1, W, 1, fill=1, stroke=0)
     canvas.setFont("Helvetica", 7)
     canvas.setFillColor(C_WHITE)
-    canvas.drawString(12 * mm, 2 * mm, "Propulsé par SolarIntel · pvlib · CrewAI")
-    canvas.drawRightString(W - 8 * mm, 2 * mm, "www.solarintel.io")
+    canvas.drawString(MARGIN + 6 * mm, 5 * mm, "Propulsé par SolarIntel  ·  pvlib  ·  CrewAI  ·  pvgis")
+    canvas.drawRightString(W - 8 * mm, 5 * mm, "www.solarintel.io  ·  © 2025")
 
     canvas.restoreState()
 
@@ -298,23 +378,28 @@ def _content_callback(canvas, doc):
     canvas.saveState()
     W, H = PAGE_W, PAGE_H
 
-    # ── Header band ───────────────────────────────────────────────────────────
+    # ── Header band (navy + amber bottom line) ────────────────────────────────
     canvas.setFillColor(C_NAVY)
-    canvas.rect(0, H - 14 * mm, W, 14 * mm, fill=1, stroke=0)
+    canvas.rect(0, H - 16 * mm, W, 16 * mm, fill=1, stroke=0)
 
-    # Barre accent en bas du header
+    canvas.setFillColor(C_AMBER)
+    canvas.rect(0, H - 16 * mm, W, 1 * mm, fill=1, stroke=0)
+
+    # Sidebar bleu sur toutes les pages
     canvas.setFillColor(C_PRIMARY)
-    canvas.rect(0, H - 14 * mm, W, 1.5 * mm, fill=1, stroke=0)
+    canvas.rect(0, 0, 4 * mm, H, fill=1, stroke=0)
 
     # Logo dans le header
     logo = getattr(doc, "_logo_path", None)
+    logo_end_x = MARGIN + 4 * mm
     if logo and os.path.isfile(logo):
         try:
             canvas.drawImage(
-                logo, MARGIN, H - 13 * mm,
-                width=9 * mm, height=9 * mm,
+                logo, logo_end_x + 1 * mm, H - 14.5 * mm,
+                width=10 * mm, height=10 * mm,
                 preserveAspectRatio=True, mask="auto",
             )
+            logo_end_x += 12 * mm
         except Exception:
             pass
 
@@ -322,27 +407,28 @@ def _content_callback(canvas, doc):
     company = getattr(doc, "_company_name", "SolarIntel")
     canvas.setFont("Helvetica-Bold", 9)
     canvas.setFillColor(C_WHITE)
-    canvas.drawString(MARGIN + 11 * mm, H - 9 * mm, company)
+    canvas.drawString(logo_end_x, H - 9 * mm, company)
 
     # Titre rapport dans le header (centre)
     r_title = getattr(doc, "_report_title", "")
     if r_title:
-        canvas.setFont("Helvetica", 8)
+        canvas.setFont("Helvetica", 7.5)
         canvas.setFillColor(HexColor("#93C5FD"))
         canvas.drawCentredString(W / 2, H - 9 * mm, r_title)
 
     # Numéro de page (droite du header)
-    canvas.setFont("Helvetica", 8)
+    canvas.setFont("Helvetica-Bold", 8)
+    canvas.setFillColor(C_AMBER)
+    canvas.drawRightString(W - MARGIN, H - 9 * mm, f"{doc.page}")
+    canvas.setFont("Helvetica", 7)
     canvas.setFillColor(C_TEXT_LIGHT)
-    canvas.drawRightString(W - MARGIN, H - 9 * mm, f"Page {doc.page}")
-
-    # ── Barre verticale accent ────────────────────────────────────────────────
-    canvas.setFillColor(C_PRIMARY)
-    canvas.rect(0, 0, 3 * mm, H, fill=1, stroke=0)
+    canvas.drawRightString(W - MARGIN - 5 * mm, H - 9 * mm, "Page")
 
     # ── Footer ────────────────────────────────────────────────────────────────
-    canvas.setFillColor(C_SURFACE)
-    canvas.rect(MARGIN - 5, 6 * mm, W - 2 * MARGIN + 10, 0.3, fill=1, stroke=0)
+    canvas.setFillColor(C_NAVY)
+    canvas.rect(0, 0, W, 10 * mm, fill=1, stroke=0)
+    canvas.setFillColor(C_PRIMARY)
+    canvas.rect(0, 10 * mm, W, 0.5 * mm, fill=1, stroke=0)
 
     canvas.setFont("Helvetica", 7)
     canvas.setFillColor(C_TEXT_LIGHT)
@@ -351,13 +437,8 @@ def _content_callback(canvas, doc):
     footer_l = f"Généré le {gen_date}"
     if client:
         footer_l += f"  ·  Client : {client}"
-    canvas.drawString(MARGIN, 4 * mm, footer_l)
-    canvas.drawRightString(W - MARGIN, 4 * mm, f"{company}  ·  Confidentiel")
-
-    # Ligne séparatrice footer
-    canvas.setStrokeColor(C_BORDER)
-    canvas.setLineWidth(0.5)
-    canvas.line(MARGIN, 8 * mm, W - MARGIN, 8 * mm)
+    canvas.drawString(MARGIN + 4 * mm, 3.5 * mm, footer_l)
+    canvas.drawRightString(W - MARGIN, 3.5 * mm, f"{company}  ·  Confidentiel  ·  SolarIntel")
 
     canvas.restoreState()
 
@@ -411,6 +492,13 @@ class ReportGenerator:
             f"{_fmt(r.simulation.annual_production_kwh)} kWh/an"
             if r.system.panel_count > 0 else ""
         )
+        # KPI badges on cover (value\nunit, label, hex_color)
+        doc._cover_kpis = [
+            (f"{_fmt(r.simulation.annual_production_kwh)}\nkWh/an", "Production annuelle", "#0EA5E9"),
+            (f"{r.economics.payback_years:.1f} ans\n",               "Retour investissement", "#F59E0B"),
+            (f"{_fmt(r.economics.annual_savings_xof)}\nXOF/an",      "Économie année 1",    "#22C55E"),
+            (f"{_fmt(r.economics.lcoe_xof_kwh, 1)}\nXOF/kWh",        "LCOE 25 ans",         "#A78BFA"),
+        ] if r.system.panel_count > 0 else []
 
         # ── Frames ───────────────────────────────────────────────────────────
         cover_frame = Frame(
@@ -419,10 +507,10 @@ class ReportGenerator:
             id="cover",
         )
         content_frame = Frame(
-            MARGIN + 3 * mm,
-            12 * mm + MARGIN,
-            CONTENT_W - 3 * mm,
-            PAGE_H - 14 * mm - 12 * mm - 2 * MARGIN,
+            MARGIN + 4 * mm,
+            10 * mm + MARGIN,
+            CONTENT_W - 4 * mm,
+            PAGE_H - 16 * mm - 10 * mm - 2 * MARGIN,
             id="content",
         )
 

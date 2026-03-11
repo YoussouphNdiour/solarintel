@@ -41,13 +41,16 @@ def _safe_step(max_val: float, divisions: int = 4) -> float:
 def build_monthly_production_chart(
     monthly_kwh: list[float],
     width: float = 160 * mm,
-    height: float = 80 * mm,
+    height: float = 90 * mm,
 ) -> Drawing:
-    """Graphique barres de production mensuelle — 12 mois."""
+    """Graphique barres de production mensuelle — 12 mois avec fond stylisé."""
     d = Drawing(width, height)
 
-    # Fond
-    d.add(Rect(0, 0, width, height, fillColor=C_BG, strokeColor=C_BORDER, strokeWidth=0.5))
+    # Fond avec bordure
+    d.add(Rect(0, 0, width, height, fillColor=C_BG, strokeColor=C_BORDER, strokeWidth=0.8))
+
+    # Bande titre
+    d.add(Rect(0, height - 14, width, 14, fillColor=C_PRIMARY_DARK, strokeColor=None, strokeWidth=0))
 
     values = [float(v) for v in monthly_kwh] if monthly_kwh else []
 
@@ -60,19 +63,19 @@ def build_monthly_production_chart(
         ))
         return d
 
-    # Titre
+    # Titre dans la bande bleue
     d.add(String(
         width / 2, height - 10,
-        "Production mensuelle (kWh)",
-        fontName="Helvetica-Bold", fontSize=9,
-        fillColor=C_TEXT, textAnchor="middle",
+        "Production mensuelle estimée (kWh)",
+        fontName="Helvetica-Bold", fontSize=8.5,
+        fillColor=HexColor("#FFFFFF"), textAnchor="middle",
     ))
 
     chart = VerticalBarChart()
-    chart.x = 44
-    chart.y = 28
-    chart.width  = width  - 60
-    chart.height = height - 50
+    chart.x = 48
+    chart.y = 32
+    chart.width  = width  - 64
+    chart.height = height - 58
 
     chart.data = [values]
 
@@ -87,35 +90,60 @@ def build_monthly_production_chart(
 
     max_val = max(values)
     chart.valueAxis.valueMin    = 0
-    chart.valueAxis.valueMax    = max_val * 1.2
-    chart.valueAxis.valueStep   = _safe_step(max_val * 1.2, 4)
+    chart.valueAxis.valueMax    = max_val * 1.25
+    chart.valueAxis.valueStep   = _safe_step(max_val * 1.25, 4)
     chart.valueAxis.labels.fontName  = "Helvetica"
-    chart.valueAxis.labels.fontSize  = 7
+    chart.valueAxis.labels.fontSize  = 6.5
     chart.valueAxis.strokeColor      = C_BORDER
     chart.valueAxis.strokeWidth      = 0.5
+    chart.valueAxis.gridStrokeColor  = HexColor("#E2E8F0")
+    chart.valueAxis.gridStrokeWidth  = 0.3
 
+    # Colorer les barres par intensité (amber = max, bleu clair = min)
     chart.bars[0].fillColor   = C_PRIMARY
     chart.bars[0].strokeColor = C_PRIMARY_DARK
     chart.bars[0].strokeWidth = 0.3
-    chart.groupSpacing        = 3
+    chart.groupSpacing        = 4
 
     d.add(chart)
 
     # Étiquette axe Y
     d.add(String(
-        10, height / 2,
-        "kWh", fontName="Helvetica", fontSize=8,
+        8, height / 2,
+        "kWh", fontName="Helvetica", fontSize=7.5,
         fillColor=C_TEXT_SEC, textAnchor="middle",
     ))
 
-    # Valeur max annotée
+    # Valeur max annotée en amber
     max_idx = values.index(max_val)
+    bar_w = chart.width / 12
+    d.add(Rect(
+        chart.x + max_idx * bar_w, chart.y + chart.height + 2,
+        bar_w, 8,
+        fillColor=C_AMBER, strokeColor=None, strokeWidth=0,
+    ))
     d.add(String(
-        chart.x + (max_idx + 0.5) * (chart.width / 12),
-        chart.y + chart.height + 4,
+        chart.x + (max_idx + 0.5) * bar_w,
+        chart.y + chart.height + 3.5,
         f"{max_val:,.0f}",
         fontName="Helvetica-Bold", fontSize=6,
-        fillColor=C_AMBER, textAnchor="middle",
+        fillColor=HexColor("#1E293B"), textAnchor="middle",
+    ))
+
+    # Étiquette axe X
+    d.add(String(
+        chart.x + chart.width / 2, 12,
+        "Mois", fontName="Helvetica", fontSize=7.5,
+        fillColor=C_TEXT_SEC, textAnchor="middle",
+    ))
+
+    # Total annuel
+    total = sum(values)
+    d.add(String(
+        width - 6, 12,
+        f"Total : {total:,.0f} kWh/an",
+        fontName="Helvetica-Bold", fontSize=7,
+        fillColor=C_PRIMARY_DARK, textAnchor="end",
     ))
 
     return d

@@ -36,6 +36,9 @@
     <!-- Lucide Icons — MUST load BEFORE ArcGIS to avoid AMD define() conflict -->
     <script src="https://unpkg.com/lucide@latest" onload="window._lucideReady=true;"></script>
 
+    <!-- Chart.js — bar charts (must load before ArcGIS AMD) -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+
     <!-- ArcGIS JS SDK 4.30 — loads LAST so its AMD loader takes over cleanly -->
     <link rel="stylesheet" href="https://js.arcgis.com/4.30/esri/themes/dark/main.css">
     <script src="https://js.arcgis.com/4.30/"></script>
@@ -541,6 +544,17 @@
                 </div>
                 <div id="surfaceInfo" class="mt-3 text-xs text-slate-500 text-center hidden">
                     Surface toiture : <span id="surfaceValue" class="font-mono text-slate-300">—</span> m²
+                </div>
+
+                <!-- Monthly production chart -->
+                <div id="monthlyChartWrap" class="mt-4 hidden">
+                    <p class="text-xs text-slate-500 uppercase tracking-wide mb-2 flex items-center gap-1">
+                        <i data-lucide="bar-chart-2" class="w-3 h-3"></i>
+                        Production mensuelle estimée (kWh)
+                    </p>
+                    <div class="rounded-lg overflow-hidden" style="background:#0F172A;padding:8px;">
+                        <canvas id="monthlyChart" height="120"></canvas>
+                    </div>
                 </div>
             </section>
 
@@ -1597,6 +1611,12 @@ async function _doCallBackend() {
         setKPI('kpiLCOE', econ.lcoe_xof_kwh, 'XOF/kWh');
         updateWorkflowSteps();  // step 4 becomes active after backend results
 
+        // Render monthly production chart
+        if (sim.monthly_production_kwh && sim.monthly_production_kwh.length === 12) {
+            _state.monthlyProduction = sim.monthly_production_kwh;
+            renderMonthlyChart(sim.monthly_production_kwh);
+        }
+
         document.getElementById('apiStatus').className = 'status-dot online';
         document.getElementById('apiStatusText').textContent = 'API en ligne';
     } catch {
@@ -1939,20 +1959,22 @@ function suggestEquipment(panelCount) {
     if (!suggested) suggested = filtered[filtered.length - 1];
     if (!suggested && catalog.length) suggested = catalog[catalog.length - 1];
 
+    let invQty = 1;
     if (suggested) {
         const brandSel = document.getElementById('inverterBrand');
         if (brandSel) { brandSel.value = brand; onInverterBrandChange(); }
         const modelSel = document.getElementById('inverterModel');
         if (modelSel) { modelSel.value = suggested.model; onInverterModelChange(); }
         // Number of inverters needed
-        const qty = Math.min(5, Math.max(1, Math.ceil(peakKwc / (suggested.power_kw || 1))));
+        invQty = Math.min(5, Math.max(1, Math.ceil(peakKwc / (suggested.power_kw || 1))));
         const qtyEl = document.getElementById('inverterQty');
-        if (qtyEl) { qtyEl.value = qty; }
+        if (qtyEl) { qtyEl.value = invQty; }
     }
 
     // ── 2. Suggest battery ───────────────────────────────────────────────
     const batSel = document.getElementById('batteryModel');
     const batQtyEl = document.getElementById('batteryQty');
+    let batSuggested = null;
     if (needsBattery && nightKwh > 0) {
         // Required usable capacity = nightKwh × 1.25 safety margin
         // LiFePO4 usable ≈ 90 % → total = nightKwh × 1.25 / 0.9
@@ -1964,13 +1986,19 @@ function suggestEquipment(panelCount) {
             onBatteryModelChange();
             const batQty = Math.max(1, Math.ceil(capacityNeeded / bat.capacity_kwh));
             if (batQtyEl) batQtyEl.value = batQty;
+            batSuggested = { model: bat.model, qty: batQty, capacity_kwh: bat.capacity_kwh };
         }
     } else if (!needsBattery && batSel) {
         batSel.value = '';
         onBatteryModelChange();
+        batSuggested = { model: null };
     }
 
     updateSystemCost();
+
+    // ── 3. Show equipment suggestion modal ───────────────────────────────
+    const modalInvData = suggested ? Object.assign({}, suggested, { brand: brand, qty: invQty }) : null;
+    showEquipmentModal(panelCount, modalInvData, batSuggested, installType);
 }
 
 // =========================================================================
@@ -2369,6 +2397,129 @@ function _setWfStep(n, state) {
 })();
 
 // =========================================================================
+// MONTHLY PRODUCTION CHART (Chart.js)
+// =========================================================================
+let _monthlyChartInstance = null;
+const MONTHS_FR = ['Jan','Fév','Mar','Avr','Mai','Jun','Jul','Aoû','Sep','Oct','Nov','Déc'];
+
+function renderMonthlyChart(monthly) {
+    if (!monthly || monthly.length === 0) return;
+    const wrap = document.getElementById('monthlyChartWrap');
+    const canvas = document.getElementById('monthlyChart');
+    if (!wrap || !canvas || typeof Chart === 'undefined') return;
+
+    wrap.classList.remove('hidden');
+
+    if (_monthlyChartInstance) {
+        _monthlyChartInstance.destroy();
+        _monthlyChartInstance = null;
+    }
+
+    const maxVal = Math.max(...monthly);
+    const colors = monthly.map(function(v) {
+        // Gradient: dimmer months = darker blue, peak = amber
+        const ratio = v / maxVal;
+        if (ratio > 0.92) return '#F59E0B';
+        if (ratio > 0.80) return '#38BDF8';
+        return '#0EA5E9';
+    });
+
+    _monthlyChartInstance = new Chart(canvas.getContext('2d'), {
+        type: 'bar',
+        data: {
+            labels: MONTHS_FR,
+            datasets: [{
+                data: monthly,
+                backgroundColor: colors,
+                borderColor: 'transparent',
+                borderRadius: 4,
+                borderSkipped: false,
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    callbacks: {
+                        label: function(ctx) { return ctx.parsed.y.toFixed(0) + ' kWh'; }
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    grid: { color: 'rgba(51,65,85,0.5)' },
+                    ticks: { color: '#94A3B8', font: { size: 10 } }
+                },
+                y: {
+                    grid: { color: 'rgba(51,65,85,0.5)' },
+                    ticks: {
+                        color: '#94A3B8', font: { size: 10 },
+                        callback: function(v) { return v + ' kWh'; }
+                    },
+                    beginAtZero: true
+                }
+            }
+        }
+    });
+
+    _safeCreateIcons();
+}
+
+// =========================================================================
+// EQUIPMENT SUGGESTION MODAL
+// =========================================================================
+function showEquipmentModal(panelCount, suggested, batSuggested, installType) {
+    const modal = document.getElementById('equipModal');
+    if (!modal) return;
+
+    const peakKwc = (panelCount * (_state.panelPower || 545) / 1000).toFixed(2);
+    const typeLabels = { autoconsommation: 'Autoconsommation', hybride: 'Hybride (réseau + batterie)', autonome: 'Site isolé / Hors-réseau' };
+    const typeColors = { autoconsommation: '#0EA5E9', hybride: '#F59E0B', autonome: '#22C55E' };
+    const typeBg    = { autoconsommation: 'rgba(14,165,233,0.12)', hybride: 'rgba(245,158,11,0.12)', autonome: 'rgba(34,197,94,0.12)' };
+
+    document.getElementById('eqmInstallBadge').textContent = typeLabels[installType] || installType;
+    document.getElementById('eqmInstallBadge').style.background = typeBg[installType] || typeBg.autoconsommation;
+    document.getElementById('eqmInstallBadge').style.color = typeColors[installType] || typeColors.autoconsommation;
+    document.getElementById('eqmPeakKwc').textContent = peakKwc + ' kWc — ' + panelCount + ' panneaux';
+
+    // Inverter
+    const invSection = document.getElementById('eqmInverterSection');
+    if (suggested) {
+        document.getElementById('eqmInvBrand').textContent  = suggested.brand || '—';
+        document.getElementById('eqmInvModel').textContent  = suggested.model || '—';
+        document.getElementById('eqmInvType').textContent   = suggested.type  || '—';
+        document.getElementById('eqmInvPower').textContent  = (suggested.power_kw || '—') + ' kW';
+        document.getElementById('eqmInvQty').textContent    = suggested.qty + ' × onduleur(s)';
+        invSection.classList.remove('hidden');
+    } else {
+        invSection.classList.add('hidden');
+    }
+
+    // Battery
+    const batSection = document.getElementById('eqmBatterySection');
+    if (batSuggested && batSuggested.model) {
+        document.getElementById('eqmBatModel').textContent = batSuggested.model;
+        document.getElementById('eqmBatQty').textContent   = batSuggested.qty + ' × batterie(s)';
+        document.getElementById('eqmBatCap').textContent   = (batSuggested.capacity_kwh * batSuggested.qty).toFixed(1) + ' kWh stockage total';
+        batSection.classList.remove('hidden');
+    } else {
+        batSection.classList.add('hidden');
+        const noBat = document.getElementById('eqmNoBattery');
+        if (noBat) noBat.classList.toggle('hidden', !!(batSuggested && !batSuggested.model));
+    }
+
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+}
+
+function closeEquipmentModal() {
+    const modal = document.getElementById('equipModal');
+    if (modal) { modal.classList.add('hidden'); modal.classList.remove('flex'); }
+}
+
+// =========================================================================
 // INIT
 // =========================================================================
 document.addEventListener('DOMContentLoaded', function() {
@@ -2385,6 +2536,106 @@ document.addEventListener('DOMContentLoaded', function() {
     setTimeout(_safeCreateIcons, 2000);
 });
 </script>
+
+<!-- ═══════════════════════════════════════════════════════════════════════
+     EQUIPMENT SUGGESTION MODAL
+     ═══════════════════════════════════════════════════════════════════════ -->
+<div id="equipModal" class="hidden fixed inset-0 z-50 items-center justify-center p-4" style="background:rgba(15,23,42,0.85);backdrop-filter:blur(4px);">
+    <div class="relative w-full max-w-md rounded-2xl shadow-2xl overflow-hidden" style="background:#1E293B;border:1px solid #334155;">
+
+        <!-- Header -->
+        <div style="background:linear-gradient(135deg,#0369A1,#0EA5E9);padding:20px 24px 16px;">
+            <div class="flex items-start justify-between">
+                <div>
+                    <h2 class="text-white font-bold text-lg mb-1">Équipements Suggérés</h2>
+                    <p class="text-blue-200 text-xs">Basé sur votre calpinage et type d'installation</p>
+                </div>
+                <button onclick="closeEquipmentModal()" class="text-blue-200 hover:text-white transition-colors ml-4 mt-0.5">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+            </div>
+            <!-- Install type badge -->
+            <div class="mt-3 flex items-center gap-2">
+                <span id="eqmInstallBadge" class="px-2.5 py-1 rounded-full text-xs font-semibold"></span>
+                <span id="eqmPeakKwc" class="text-blue-200 text-xs font-mono"></span>
+            </div>
+        </div>
+
+        <!-- Body -->
+        <div class="p-6 space-y-4">
+
+            <!-- Inverter block -->
+            <div id="eqmInverterSection" class="rounded-xl p-4" style="background:#0F172A;border:1px solid #334155;">
+                <div class="flex items-center gap-2 mb-3">
+                    <div class="w-8 h-8 rounded-lg flex items-center justify-center" style="background:rgba(14,165,233,0.15);">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0EA5E9" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v16"/></svg>
+                    </div>
+                    <p class="text-xs text-slate-400 uppercase tracking-wide font-semibold">Onduleur</p>
+                </div>
+                <div class="space-y-1.5">
+                    <div class="flex justify-between">
+                        <span class="text-slate-400 text-sm">Marque</span>
+                        <span id="eqmInvBrand" class="text-white font-semibold text-sm"></span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-slate-400 text-sm">Modèle</span>
+                        <span id="eqmInvModel" class="text-solar-blue font-mono text-sm"></span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-slate-400 text-sm">Type</span>
+                        <span id="eqmInvType" class="text-slate-300 text-sm"></span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-slate-400 text-sm">Puissance</span>
+                        <span id="eqmInvPower" class="text-slate-300 text-sm font-mono"></span>
+                    </div>
+                    <div class="pt-1 mt-1 border-t border-slate-700">
+                        <span id="eqmInvQty" class="text-solar-amber font-semibold text-sm"></span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Battery block -->
+            <div id="eqmBatterySection" class="rounded-xl p-4" style="background:#0F172A;border:1px solid #334155;">
+                <div class="flex items-center gap-2 mb-3">
+                    <div class="w-8 h-8 rounded-lg flex items-center justify-center" style="background:rgba(34,197,94,0.15);">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#22C55E" stroke-width="2"><rect x="2" y="7" width="18" height="11" rx="2"/><path d="M22 11v3"/></svg>
+                    </div>
+                    <p class="text-xs text-slate-400 uppercase tracking-wide font-semibold">Stockage Batterie</p>
+                </div>
+                <div class="space-y-1.5">
+                    <div class="flex justify-between">
+                        <span class="text-slate-400 text-sm">Modèle</span>
+                        <span id="eqmBatModel" class="text-green-400 font-mono text-sm"></span>
+                    </div>
+                    <div class="flex justify-between items-center pt-1 mt-1 border-t border-slate-700">
+                        <span id="eqmBatQty" class="text-solar-amber font-semibold text-sm"></span>
+                        <span id="eqmBatCap" class="text-green-400 text-xs font-mono"></span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- No battery note -->
+            <div id="eqmNoBattery" class="hidden rounded-xl p-3 text-center" style="background:rgba(51,65,85,0.4);border:1px solid #334155;">
+                <p class="text-slate-400 text-sm">Aucun stockage requis pour ce type d'installation</p>
+            </div>
+        </div>
+
+        <!-- Footer buttons -->
+        <div class="px-6 pb-6 flex gap-3">
+            <button onclick="closeEquipmentModal()"
+                class="flex-1 py-2.5 rounded-lg text-sm font-semibold transition-colors"
+                style="background:#334155;color:#CBD5E1;">
+                Modifier manuellement
+            </button>
+            <button onclick="closeEquipmentModal()"
+                class="flex-1 py-2.5 rounded-lg text-sm font-semibold transition-colors"
+                style="background:linear-gradient(135deg,#0EA5E9,#0369A1);color:white;">
+                Confirmer la sélection
+            </button>
+        </div>
+    </div>
+</div>
 
 </body>
 </html>
