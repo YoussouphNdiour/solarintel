@@ -279,11 +279,11 @@ def _cover_callback(canvas, doc):
     canvas.drawString(logo_end_x, H - 11 * mm, company)
 
     canvas.setFont("Helvetica", 8)
-    canvas.setFillColor(HexColor("#93C5FD"))
+    canvas.setFillColor(_THEME["primary"])
     canvas.drawString(logo_end_x, H - 17 * mm, "Dimensionnement Photovoltaïque · Intelligence Solaire")
 
     canvas.setFont("Helvetica", 7)
-    canvas.setFillColor(HexColor("#64748B"))
+    canvas.setFillColor(_THEME["primary"])
     canvas.drawRightString(W - 8 * mm, H - 11 * mm, "CONFIDENTIEL")
     canvas.drawRightString(W - 8 * mm, H - 17 * mm, date.today().strftime("%d/%m/%Y"))
 
@@ -363,7 +363,7 @@ def _cover_callback(canvas, doc):
     canvas.setFillColor(C_AMBER)
     canvas.rect(0, 12 * mm - 1, W, 1, fill=1, stroke=0)
     canvas.setFont("Helvetica", 7)
-    canvas.setFillColor(C_WHITE)
+    canvas.setFillColor(_THEME["primary"])
     canvas.drawString(MARGIN + 6 * mm, 5 * mm, "Propulsé par TECH SUPPLY CONNECT  ·  pvlib  ·  CrewAI  ·  pvgis")
     canvas.drawRightString(W - 8 * mm, 5 * mm, "www.solarintel.io  ·  © 2026")
 
@@ -416,7 +416,7 @@ def _content_callback(canvas, doc):
     r_title = getattr(doc, "_report_title", "")
     if r_title:
         canvas.setFont("Helvetica", 7.5)
-        canvas.setFillColor(HexColor("#93C5FD"))
+        canvas.setFillColor(_THEME["primary"])
         canvas.drawCentredString(W / 2, H - 9 * mm, r_title)
 
     # Numéro de page (droite du header)
@@ -424,7 +424,7 @@ def _content_callback(canvas, doc):
     canvas.setFillColor(C_AMBER)
     canvas.drawRightString(W - MARGIN, H - 9 * mm, f"{doc.page}")
     canvas.setFont("Helvetica", 7)
-    canvas.setFillColor(C_TEXT_LIGHT)
+    canvas.setFillColor(_THEME["primary"])
     canvas.drawRightString(W - MARGIN - 5 * mm, H - 9 * mm, "Page")
 
     # ── Footer ────────────────────────────────────────────────────────────────
@@ -434,7 +434,7 @@ def _content_callback(canvas, doc):
     canvas.rect(0, 10 * mm, W, 0.5 * mm, fill=1, stroke=0)
 
     canvas.setFont("Helvetica", 7)
-    canvas.setFillColor(C_TEXT_LIGHT)
+    canvas.setFillColor()
     gen_date = getattr(doc, "_gen_date", date.today().isoformat())
     client   = getattr(doc, "_client_name", "")
     footer_l = f"Généré le {gen_date}"
