@@ -434,7 +434,7 @@ def _content_callback(canvas, doc):
     canvas.rect(0, 10 * mm, W, 0.5 * mm, fill=1, stroke=0)
 
     canvas.setFont("Helvetica", 7)
-    canvas.setFillColor()
+    canvas.setFillColor(_THEME["primary"])
     gen_date = getattr(doc, "_gen_date", date.today().isoformat())
     client   = getattr(doc, "_client_name", "")
     footer_l = f"Généré le {gen_date}"
