@@ -43,6 +43,9 @@ C_TEXT_SEC     = HexColor("#475569")
 C_TEXT_LIGHT   = HexColor("#94A3B8")
 C_ROW_ALT      = HexColor("#F1F5F9")
 
+# ── Active theme (overridden per-report, safe for synchronous generation) ─────
+_THEME: dict = {"primary": C_PRIMARY, "secondary": C_PRIMARY_DARK}
+
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -56,7 +59,7 @@ def _fmt(value: float, decimals: int = 0, suffix: str = "") -> str:
 
 def _section_header(text: str, color=None) -> Table:
     """Bande colorée pleine largeur pour les titres de section."""
-    bg = color or C_PRIMARY_DARK
+    bg = color or _THEME["secondary"]
     para = Paragraph(
         text,
         ParagraphStyle("sh", fontName="Helvetica-Bold", fontSize=11,
@@ -81,13 +84,13 @@ def _subsection_header(text: str) -> Table:
     para = Paragraph(
         text,
         ParagraphStyle("ssh", fontName="Helvetica-Bold", fontSize=10,
-                       textColor=C_PRIMARY_DARK, leading=13),
+                       textColor=_THEME["secondary"], leading=13),
     )
     t = Table([[para]], colWidths=[CONTENT_W])
     t.setStyle(TableStyle([
         ("BACKGROUND",    (0, 0), (-1, -1), HexColor("#EFF6FF")),
         ("LINEAFTER",     (0, 0), (-1, -1), 0, C_WHITE),
-        ("LINEBEFORE",    (0, 0), (-1, -1), 3, C_PRIMARY),
+        ("LINEBEFORE",    (0, 0), (-1, -1), 3, _THEME["primary"]),
         ("TOPPADDING",    (0, 0), (-1, -1), 5),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
         ("LEFTPADDING",   (0, 0), (-1, -1), 8),
@@ -107,7 +110,7 @@ def _data_table(data: list[list], col_widths=None) -> Table:
         ("FONTNAME",      (0, 1), (-1, -1), "Helvetica"),
         ("FONTSIZE",      (0, 0), (-1, -1), 9),
         ("TEXTCOLOR",     (0, 0), (-1,  0), C_WHITE),
-        ("BACKGROUND",    (0, 0), (-1,  0), C_PRIMARY_DARK),
+        ("BACKGROUND",    (0, 0), (-1,  0), _THEME["secondary"]),
         ("ALIGN",         (1, 0), (1,  -1), "RIGHT"),
         ("VALIGN",        (0, 0), (-1, -1), "MIDDLE"),
         ("GRID",          (0, 0), (-1, -1), 0.4, C_BORDER),
@@ -242,7 +245,7 @@ def _cover_callback(canvas, doc):
     _draw_solar_grid(canvas, 0, H * 0.28, W, H * 0.45, C_PRIMARY, alpha=0.055)
 
     # ── Bande header bleue foncée ─────────────────────────────────────────────
-    canvas.setFillColor(C_PRIMARY_DARK)
+    canvas.setFillColor(_THEME["secondary"])
     canvas.rect(0, H - 20 * mm, W, 20 * mm, fill=1, stroke=0)
 
     # ── Ligne accent amber sous le header ────────────────────────────────────
@@ -250,7 +253,7 @@ def _cover_callback(canvas, doc):
     canvas.rect(0, H - 20 * mm - 1.5 * mm, W, 1.5 * mm, fill=1, stroke=0)
 
     # ── Barre verticale gauche ────────────────────────────────────────────────
-    canvas.setFillColor(C_PRIMARY)
+    canvas.setFillColor(_THEME["primary"])
     canvas.rect(0, 0, 6 * mm, H, fill=1, stroke=0)
 
     # ── Logo dans le header ───────────────────────────────────────────────────
@@ -355,14 +358,14 @@ def _cover_callback(canvas, doc):
     _info_line("Établi le :",    gen_date,    y_base)
 
     # ── Pied de page ──────────────────────────────────────────────────────────
-    canvas.setFillColor(C_PRIMARY_DARK)
+    canvas.setFillColor(_THEME["secondary"])
     canvas.rect(0, 0, W, 12 * mm, fill=1, stroke=0)
     canvas.setFillColor(C_AMBER)
     canvas.rect(0, 12 * mm - 1, W, 1, fill=1, stroke=0)
     canvas.setFont("Helvetica", 7)
     canvas.setFillColor(C_WHITE)
-    canvas.drawString(MARGIN + 6 * mm, 5 * mm, "Propulsé par SolarIntel  ·  pvlib  ·  CrewAI  ·  pvgis")
-    canvas.drawRightString(W - 8 * mm, 5 * mm, "www.solarintel.io  ·  © 2025")
+    canvas.drawString(MARGIN + 6 * mm, 5 * mm, "Propulsé par TECH SUPPLY CONNECT  ·  pvlib  ·  CrewAI  ·  pvgis")
+    canvas.drawRightString(W - 8 * mm, 5 * mm, "www.solarintel.io  ·  © 2026")
 
     canvas.restoreState()
 
@@ -379,14 +382,14 @@ def _content_callback(canvas, doc):
     W, H = PAGE_W, PAGE_H
 
     # ── Header band (navy + amber bottom line) ────────────────────────────────
-    canvas.setFillColor(C_NAVY)
+    canvas.setFillColor(_THEME["secondary"])
     canvas.rect(0, H - 16 * mm, W, 16 * mm, fill=1, stroke=0)
 
     canvas.setFillColor(C_AMBER)
     canvas.rect(0, H - 16 * mm, W, 1 * mm, fill=1, stroke=0)
 
     # Sidebar bleu sur toutes les pages
-    canvas.setFillColor(C_PRIMARY)
+    canvas.setFillColor(_THEME["primary"])
     canvas.rect(0, 0, 4 * mm, H, fill=1, stroke=0)
 
     # Logo dans le header
@@ -425,9 +428,9 @@ def _content_callback(canvas, doc):
     canvas.drawRightString(W - MARGIN - 5 * mm, H - 9 * mm, "Page")
 
     # ── Footer ────────────────────────────────────────────────────────────────
-    canvas.setFillColor(C_NAVY)
+    canvas.setFillColor(_THEME["secondary"])
     canvas.rect(0, 0, W, 10 * mm, fill=1, stroke=0)
-    canvas.setFillColor(C_PRIMARY)
+    canvas.setFillColor(_THEME["primary"])
     canvas.rect(0, 10 * mm, W, 0.5 * mm, fill=1, stroke=0)
 
     canvas.setFont("Helvetica", 7)
@@ -453,10 +456,14 @@ class ReportGenerator:
         report: SolarReport,
         logo_path: str | Path | None = None,
         company_name: str | None = None,
+        color_primary: str | None = None,
+        color_secondary: str | None = None,
     ):
-        self.report       = report
-        self.logo_path    = str(logo_path) if logo_path else None
-        self.company_name = company_name or report.company_name
+        self.report          = report
+        self.logo_path       = str(logo_path) if logo_path else None
+        self.company_name    = company_name or report.company_name
+        self.color_primary   = HexColor(color_primary)   if color_primary   else C_PRIMARY
+        self.color_secondary = HexColor(color_secondary) if color_secondary else C_PRIMARY_DARK
 
         # Auto-detect logo si non fourni
         if not self.logo_path:
@@ -470,6 +477,11 @@ class ReportGenerator:
                     break
 
     def generate(self, output_path: str = "rapport_solarintel.pdf") -> str:
+        # Override module-level theme so all helpers pick up user colors
+        global _THEME
+        _THEME["primary"]   = self.color_primary
+        _THEME["secondary"] = self.color_secondary
+
         doc = BaseDocTemplate(
             output_path,
             pagesize=A4,
@@ -708,7 +720,7 @@ class ReportGenerator:
             ("FONTNAME",      (0, -1), (-1, -1),  "Helvetica-Bold"),
             ("FONTSIZE",      (0,  0), (-1, -1),  8),
             ("TEXTCOLOR",     (0,  0), (-1,  0),  C_WHITE),
-            ("BACKGROUND",    (0,  0), (-1,  0),  C_PRIMARY_DARK),
+            ("BACKGROUND",    (0,  0), (-1,  0),  _THEME["secondary"]),
             ("BACKGROUND",    (0, -1), (-1, -1),  HexColor("#FEF3C7")),
             ("ALIGN",         (1,  0), (-1, -1),  "RIGHT"),
             ("ALIGN",         (0,  0), (0,  -1),  "LEFT"),
@@ -858,7 +870,7 @@ class ReportGenerator:
             ("FONTNAME",      (0, 1), (-1, -1), "Helvetica"),
             ("FONTSIZE",      (0, 0), (-1, -1), 8),
             ("TEXTCOLOR",     (0, 0), (-1,  0), C_WHITE),
-            ("BACKGROUND",    (0, 0), (-1,  0), C_PRIMARY_DARK),
+            ("BACKGROUND",    (0, 0), (-1,  0), _THEME["secondary"]),
             ("ALIGN",         (2, 0), (2,  -1), "CENTER"),
             ("VALIGN",        (0, 0), (-1, -1), "MIDDLE"),
             ("GRID",          (0, 0), (-1, -1), 0.4, C_BORDER),

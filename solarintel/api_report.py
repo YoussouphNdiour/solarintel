@@ -114,6 +114,10 @@ class ReportRequest(BaseModel):
     company_name: str = "SolarIntel"
     report_title: str = "Étude de dimensionnement PV"
     client_name: str = ""
+    # Personnalisation visuelle
+    logo_b64: str = ""            # logo encodé en base64 (data URL ou raw base64)
+    color_primary: str = "#0EA5E9"
+    color_secondary: str = "#0369A1"
     # KPIs pré-calculés par le frontend / l'API simulate
     kpi_production_kwh: float = 0
     kpi_coverage_pct: float = 0
@@ -348,19 +352,44 @@ def _build_pdf(req: ReportRequest) -> bytes:
         },
     }
 
-    # Logo — cherche dans assets/ à la racine du projet
+    # ── Logo — priorité : logo uploadé par l'utilisateur, sinon assets/ ────────
     _here = os.path.dirname(os.path.abspath(__file__))
-    logo_candidates = [
-        os.path.join(_here, "..", "assets", "logo_solarintel.png"),
-        os.path.join(_here, "..", "assets", "logo.png"),
-    ]
-    logo_path = next((p for p in logo_candidates if os.path.isfile(p)), None)
+    logo_path: str | None = None
+    _user_logo_tmp: str | None = None
+
+    if req.logo_b64:
+        try:
+            import base64
+            raw = req.logo_b64
+            # Supprimer le préfixe data URL si présent (data:image/png;base64,...)
+            if "," in raw:
+                raw = raw.split(",", 1)[1]
+            logo_bytes = base64.b64decode(raw)
+            tmp_logo_fd, _user_logo_tmp = tempfile.mkstemp(suffix=".png")
+            os.write(tmp_logo_fd, logo_bytes)
+            os.close(tmp_logo_fd)
+            logo_path = _user_logo_tmp
+        except Exception as exc:
+            logger.warning("Impossible de décoder le logo uploadé : %s", exc)
+
+    if not logo_path:
+        logo_candidates = [
+            os.path.join(_here, "..", "assets", "logo_solarintel.png"),
+            os.path.join(_here, "..", "assets", "logo.png"),
+        ]
+        logo_path = next((p for p in logo_candidates if os.path.isfile(p)), None)
 
     # ReportGenerator.generate() only accepts a file path, so we use a temp file.
     tmp_fd, tmp_path = tempfile.mkstemp(suffix=".pdf")
     os.close(tmp_fd)
     try:
-        gen = ReportGenerator(report, logo_path=logo_path, company_name=req.company_name)
+        gen = ReportGenerator(
+            report,
+            logo_path=logo_path,
+            company_name=req.company_name,
+            color_primary=req.color_primary or "#0EA5E9",
+            color_secondary=req.color_secondary or "#0369A1",
+        )
         gen.generate(output_path=tmp_path)
         with open(tmp_path, "rb") as f:
             return f.read()
@@ -369,6 +398,11 @@ def _build_pdf(req: ReportRequest) -> bytes:
             os.unlink(tmp_path)
         except OSError:
             pass
+        if _user_logo_tmp:
+            try:
+                os.unlink(_user_logo_tmp)
+            except OSError:
+                pass
 
 
 # ---------------------------------------------------------------------------
