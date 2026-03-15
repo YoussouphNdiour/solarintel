@@ -329,10 +329,75 @@
         .wf-lbl.act { color:#38BDF8; }
         .wf-lbl.done { color:#4ADE80; }
         .wf-arr { color:#334155; font-size:0.6rem; padding:0 0.35rem; flex-shrink:0; }
+
+        /* ── MODE SELECTION STARTUP MODAL ─────────────────────────────── */
+        #modeSelectModal {
+            position: fixed; inset: 0; z-index: 9999;
+            display: flex; align-items: center; justify-content: center;
+            background: rgba(15,23,42,0.96); backdrop-filter: blur(8px);
+        }
+        .mode-card {
+            flex: 1; max-width: 220px;
+            background: #1E293B; border: 1px solid #334155; border-radius: 1rem;
+            padding: 2rem 1.5rem; cursor: pointer;
+            display: flex; flex-direction: column; align-items: center; gap: 1rem;
+            transition: border-color 0.2s, transform 0.2s, box-shadow 0.2s;
+            text-align: center;
+        }
+        .mode-card:hover {
+            border-color: #0EA5E9;
+            transform: translateY(-3px);
+            box-shadow: 0 12px 32px rgba(14,165,233,0.18);
+        }
+        .mode-card .mode-icon {
+            width: 52px; height: 52px; border-radius: 0.875rem;
+            display: flex; align-items: center; justify-content: center;
+        }
     </style>
 </head>
 
 <body class="bg-bg-dark text-slate-50 font-sans">
+
+    <!-- ── STARTUP: Mode Selection Modal ──────────────────────────────── -->
+    <div id="modeSelectModal">
+        <div style="max-width:560px;width:100%;padding:0 1rem;">
+            <!-- Logo + title -->
+            <div class="flex flex-col items-center mb-8 gap-3">
+                <div class="w-14 h-14 rounded-2xl bg-solar-blue flex items-center justify-center shadow-lg">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
+                </div>
+                <div class="text-center">
+                    <h1 class="text-2xl font-bold tracking-tight text-white">SolarIntel</h1>
+                    <p class="text-slate-400 text-sm mt-0.5">Choisissez votre mode de travail</p>
+                </div>
+            </div>
+
+            <!-- Two choices -->
+            <div class="flex gap-4 justify-center">
+                <!-- Consommation Electrique -->
+                <div class="mode-card" onclick="selectAppMode('consommation')">
+                    <div class="mode-icon" style="background:rgba(245,158,11,0.15);">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#F59E0B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+                    </div>
+                    <div>
+                        <p class="font-semibold text-white text-sm mb-1">Consommation Électrique</p>
+                        <p class="text-slate-400 text-xs leading-snug">Saisissez directement votre consommation mensuelle ou annuelle en kWh</p>
+                    </div>
+                </div>
+
+                <!-- Bilan Énergétique -->
+                <div class="mode-card" onclick="selectAppMode('bilan')">
+                    <div class="mode-icon" style="background:rgba(34,197,94,0.12);">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#22C55E" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
+                    </div>
+                    <div>
+                        <p class="font-semibold text-white text-sm mb-1">Bilan Énergétique</p>
+                        <p class="text-slate-400 text-xs leading-snug">Listez vos appareils électriques pour calculer automatiquement votre consommation</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <!-- Header -->
     <header class="border-b border-border-slate bg-surface/80 backdrop-blur-sm sticky top-0 z-50">
@@ -420,8 +485,89 @@
                 </div>
             </section>
 
+            <!-- Section F: Bilan Énergétique (affiché en mode bilan) -->
+            <section id="sectionBilanEnergetique" class="section-card">
+                <h2 class="flex items-center gap-2 text-sm font-semibold text-slate-300 mb-3">
+                    <i data-lucide="table-2" class="w-4 h-4 text-green-400"></i>
+                    Bilan Énergétique
+                </h2>
+                <div class="overflow-x-auto">
+                    <table class="w-full" id="applianceTable" style="min-width:520px;font-size:0.78rem;">
+                        <thead>
+                            <tr class="text-slate-500 border-b border-slate-700 text-left">
+                                <th class="py-1.5 pr-1" style="min-width:120px">Appareil</th>
+                                <th class="py-1.5 px-1 text-center" style="width:44px">Qté</th>
+                                <th class="py-1.5 px-1 text-center" style="width:60px">W</th>
+                                <th class="py-1.5 px-1 text-center" style="width:52px">h/Jour</th>
+                                <th class="py-1.5 px-1 text-center" style="width:52px">h/Nuit</th>
+                                <th class="py-1.5 px-1 text-right text-solar-amber" style="width:62px">kWh Jour</th>
+                                <th class="py-1.5 px-1 text-right text-blue-400" style="width:62px">kWh Nuit</th>
+                                <th class="py-1.5 pl-1 w-6"></th>
+                            </tr>
+                        </thead>
+                        <tbody id="applianceTbody"></tbody>
+                        <tfoot class="border-t border-slate-700">
+                            <tr class="font-semibold text-slate-300">
+                                <td colspan="4" class="py-1.5 pr-2 text-right text-slate-400 text-xs">Total / jour</td>
+                                <td id="totalDailyKwh" class="py-1.5 px-1 text-right font-mono text-solar-amber">0.00</td>
+                                <td id="totalDayKwh"   class="py-1.5 px-1 text-right font-mono text-solar-amber">0.00</td>
+                                <td id="totalNightKwh" class="py-1.5 px-1 text-right font-mono text-blue-400">0.00</td>
+                                <td></td>
+                            </tr>
+                            <tr class="text-slate-400 text-xs">
+                                <td colspan="4" class="pb-1.5 pr-2 text-right">Mensuel (×30)</td>
+                                <td id="totalMonthlyKwh" class="pb-1.5 px-1 text-right font-mono text-green-400" colspan="3">0.0 kWh</td>
+                                <td></td>
+                            </tr>
+                            <tr class="text-slate-500 text-xs">
+                                <td colspan="4" class="pb-1 pr-2 text-right">Puissance nocturne</td>
+                                <td id="peakNightW" class="pb-1 px-1 text-right font-mono text-blue-300" colspan="3">— W</td>
+                                <td></td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+                <button onclick="addApplianceRow()"
+                    class="mt-3 w-full flex items-center justify-center gap-2 border border-slate-700 hover:border-solar-blue text-slate-400 hover:text-solar-blue py-2 rounded-lg text-xs transition-colors">
+                    <i data-lucide="plus" class="w-3 h-3"></i>
+                    Ajouter un appareil
+                </button>
+                <!-- Paramètres financiers (nécessaires pour calcul d'économies et ROI) -->
+                <div class="mt-4 pt-4 border-t border-slate-700">
+                    <p class="text-xs text-slate-500 mb-3 flex items-center gap-1.5">
+                        <i data-lucide="landmark" class="w-3 h-3"></i>
+                        Paramètres financiers
+                    </p>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-xs text-slate-400 mb-1">Grille Senelec</label>
+                            <select id="bilanSenelecTariff" class="si-select"
+                                    onchange="updateState('senelec_tariff', this.value || null)">
+                                <option value="">Tarif fixe (manuel)</option>
+                                <option value="DPP">DPP — Domestique Petite</option>
+                                <option value="DMP">DMP — Domestique Moyenne</option>
+                                <option value="PPP">PPP — Professionnel Petite</option>
+                                <option value="PMP">PMP — Professionnel Moyenne</option>
+                                <option value="DPP_WOYOFAL">DPP Woyofal</option>
+                                <option value="DMP_WOYOFAL">DMP Woyofal</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-xs text-slate-400 mb-1">Prix kWh (XOF) <span class="text-slate-500">si hors Senelec</span></label>
+                            <input id="bilanPriceKwh" type="number" class="si-input" value="118"
+                                   oninput="updateState('electricity_price_kwh', +this.value)">
+                        </div>
+                        <div class="col-span-2">
+                            <label class="block text-xs text-slate-400 mb-1">Augmentation (%/an)</label>
+                            <input id="bilanAnnualIncrease" type="number" class="si-input" value="3.5" step="0.1"
+                                   oninput="updateState('annual_increase_pct', +this.value)">
+                        </div>
+                    </div>
+                </div>
+            </section>
+
             <!-- Section B: Consommation -->
-            <section class="section-card">
+            <section id="sectionConsommation" class="section-card">
                 <h2 class="flex items-center gap-2 text-sm font-semibold text-slate-300 mb-3">
                     <i data-lucide="zap" class="w-4 h-4 text-solar-amber"></i>
                     Consommation Electrique
@@ -591,6 +737,7 @@
                             <select id="inverterBrand" class="si-select" onchange="onInverterBrandChange()">
                                 <option value="GOODWE">GOODWE</option>
                                 <option value="GROWATT">GROWATT</option>
+                                <option value="DEYE">DEYE</option>
                             </select>
                         </div>
                         <div>
@@ -664,55 +811,6 @@
                         </tfoot>
                     </table>
                 </div>
-            </section>
-
-            <!-- Section F: Bilan Énergétique -->
-            <section class="section-card">
-                <h2 class="flex items-center gap-2 text-sm font-semibold text-slate-300 mb-3">
-                    <i data-lucide="table-2" class="w-4 h-4 text-green-400"></i>
-                    Bilan Énergétique
-                </h2>
-                <div class="overflow-x-auto">
-                    <table class="w-full" id="applianceTable" style="min-width:520px;font-size:0.78rem;">
-                        <thead>
-                            <tr class="text-slate-500 border-b border-slate-700 text-left">
-                                <th class="py-1.5 pr-1" style="min-width:120px">Appareil</th>
-                                <th class="py-1.5 px-1 text-center" style="width:44px">Qté</th>
-                                <th class="py-1.5 px-1 text-center" style="width:60px">W</th>
-                                <th class="py-1.5 px-1 text-center" style="width:52px">h/Jour</th>
-                                <th class="py-1.5 px-1 text-center" style="width:52px">h/Nuit</th>
-                                <th class="py-1.5 px-1 text-right text-solar-amber" style="width:62px">kWh Jour</th>
-                                <th class="py-1.5 px-1 text-right text-blue-400" style="width:62px">kWh Nuit</th>
-                                <th class="py-1.5 pl-1 w-6"></th>
-                            </tr>
-                        </thead>
-                        <tbody id="applianceTbody"></tbody>
-                        <tfoot class="border-t border-slate-700">
-                            <tr class="font-semibold text-slate-300">
-                                <td colspan="4" class="py-1.5 pr-2 text-right text-slate-400 text-xs">Total / jour</td>
-                                <td id="totalDailyKwh" class="py-1.5 px-1 text-right font-mono text-solar-amber">0.00</td>
-                                <td id="totalDayKwh"   class="py-1.5 px-1 text-right font-mono text-solar-amber">0.00</td>
-                                <td id="totalNightKwh" class="py-1.5 px-1 text-right font-mono text-blue-400">0.00</td>
-                                <td></td>
-                            </tr>
-                            <tr class="text-slate-400 text-xs">
-                                <td colspan="4" class="pb-1.5 pr-2 text-right">Mensuel (×30)</td>
-                                <td id="totalMonthlyKwh" class="pb-1.5 px-1 text-right font-mono text-green-400" colspan="3">0.0 kWh</td>
-                                <td></td>
-                            </tr>
-                            <tr class="text-slate-500 text-xs">
-                                <td colspan="4" class="pb-1 pr-2 text-right">Puissance nocturne</td>
-                                <td id="peakNightW" class="pb-1 px-1 text-right font-mono text-blue-300" colspan="3">— W</td>
-                                <td></td>
-                            </tr>
-                        </tfoot>
-                    </table>
-                </div>
-                <button onclick="addApplianceRow()"
-                    class="mt-3 w-full flex items-center justify-center gap-2 border border-slate-700 hover:border-solar-blue text-slate-400 hover:text-solar-blue py-2 rounded-lg text-xs transition-colors">
-                    <i data-lucide="plus" class="w-3 h-3"></i>
-                    Ajouter un appareil
-                </button>
             </section>
 
             <!-- Section G: Rapport PDF -->
@@ -870,15 +968,15 @@ const PANEL_CATALOG = {
 };
 
 // =========================================================================
-// INVERTER CATALOG (GOODWE / GROWATT)
+// INVERTER CATALOG (GOODWE / GROWATT / DEYE)
 // =========================================================================
 const INVERTER_CATALOG = {
     "GOODWE": [
         { model: "GW3600-EH",  power_kw: 3.6, phase: "Monophasé", type: "Hybride",  defaultPrice: 350000 },
         { model: "GW5000-EH",  power_kw: 5.0, phase: "Monophasé", type: "Hybride",  defaultPrice: 450000 },
         { model: "GW8000-DT",  power_kw: 8.0, phase: "Triphasé",  type: "Hybride",  defaultPrice: 620000 },
-        { model: "GW10000-DT", power_kw: 10.0, phase: "Triphasé", type: "Hybride",  defaultPrice: 750000 },
-        { model: "GW15000-DT", power_kw: 15.0, phase: "Triphasé", type: "Hybride",  defaultPrice: 950000 },
+        { model: "GW10000-DT", power_kw: 10.0, phase: "Triphasé", type: "Hybride",  defaultPrice: 1450000 },
+        { model: "GW15000-DT", power_kw: 15.0, phase: "Triphasé", type: "Hybride",  defaultPrice: 1950000 },
         { model: "GW20KT",     power_kw: 20.0, phase: "Triphasé", type: "Réseau",   defaultPrice: 1150000 },
     ],
     "GROWATT": [
@@ -889,27 +987,34 @@ const INVERTER_CATALOG = {
         { model: "MID 15KTL3-X",   power_kw: 15.0, phase: "Triphasé", type: "Réseau",          defaultPrice: 900000 },
         { model: "MID 20KTL3-X",   power_kw: 20.0, phase: "Triphasé", type: "Réseau",          defaultPrice: 1100000 },
     ],
+    "DEYE": [
+        { model: "SUN-5K-SG01LP1",  power_kw: 5.0,  phase: "Monophasé", type: "Hybride", defaultPrice: 1875000 },
+        { model: "SUN-12K-SG01LP1", power_kw: 12.0, phase: "Monophasé", type: "Hybride", defaultPrice: 1950000 },
+        { model: "SUN-12K-SG04LP3", power_kw: 12.0, phase: "Triphasé",  type: "Hybride", defaultPrice: 3600000 },
+        { model: "SUN-30K-SG01LP3", power_kw: 30.0, phase: "Triphasé",  type: "Hybride", defaultPrice: 2350000 },
+        { model: "SUN-50K-SG01LP3", power_kw: 50.0, phase: "Triphasé",  type: "Hybride", defaultPrice: 2350000 },
+    ],
 };
 
 // =========================================================================
 // BATTERY CATALOG (UHOME)
 // =========================================================================
 const BATTERY_CATALOG = [
-    { model: "UHOME 5.0kWh",  capacity_kwh: 5.12,  voltage: 48, chemistry: "LiFePO4", cycles: 6000, defaultPrice: 900000 },
-    { model: "UHOME 10.0kWh", capacity_kwh: 10.24, voltage: 48, chemistry: "LiFePO4", cycles: 6000, defaultPrice: 1700000 },
-    { model: "UHOME 15.0kWh", capacity_kwh: 15.36, voltage: 48, chemistry: "LiFePO4", cycles: 6000, defaultPrice: 2400000 },
-    { model: "UHOME 20.0kWh", capacity_kwh: 20.48, voltage: 48, chemistry: "LiFePO4", cycles: 6000, defaultPrice: 3100000 },
+    { model: "UHOME 5.0kWh",       capacity_kwh: 5.12,  voltage: 48, chemistry: "LiFePO4", cycles: 6000, defaultPrice: 850000  },
+    { model: "UHOME 10.0kWh",      capacity_kwh: 10.24, voltage: 48, chemistry: "LiFePO4", cycles: 6000, defaultPrice: 1500000 },
+    { model: "UHOME 15.0kWh",      capacity_kwh: 15.36, voltage: 48, chemistry: "LiFePO4", cycles: 6000, defaultPrice: 1850000 },
+    { model: "UHOME 20.0kWh",      capacity_kwh: 20.48, voltage: 48, chemistry: "LiFePO4", cycles: 6000, defaultPrice: 2300000 },
 ];
 
 // =========================================================================
 // APPLIANCE TABLE DATA
 // =========================================================================
 let applianceRows = [
-    { name: "Climatiseur 1.5CV", qty: 1, power: 1100, hoursDay: 0,  hoursNight: 8 },
+    { name: "Climatiseur 1.5CV", qty: 1, power: 1100, hoursDay: 2,  hoursNight: 8 },
     { name: "Réfrigérateur",     qty: 1, power: 150,  hoursDay: 24, hoursNight: 0 },
     { name: "Éclairage LED",     qty: 10, power: 10,  hoursDay: 2,  hoursNight: 5 },
-    { name: "Télévision",        qty: 1, power: 100,  hoursDay: 4,  hoursNight: 2 },
-    { name: "Chargeurs USB",     qty: 4, power: 10,   hoursDay: 2,  hoursNight: 1 },
+    { name: "Télévision",        qty: 1, power: 100,  hoursDay: 4,  hoursNight: 4 },
+    { name: "Chargeurs USB",     qty: 4, power: 10,   hoursDay: 5,  hoursNight: 5 },
 ];
 
 // =========================================================================
@@ -1599,7 +1704,7 @@ async function _doCallBackend() {
 
         _state.annualProduction_kWh = Math.round(sim.annual_production_kwh);
         const annual = STATE.annualConsumption || 1;
-        _state.coverageRate = Math.min(999, Math.round(sim.annual_production_kwh / annual * 100));
+        _state.coverageRate = Math.min(100, Math.round(sim.annual_production_kwh / annual * 100));
         _state.annualSavings = Math.round(econ.annual_savings_year1_xof);
         _state.paybackYears = econ.payback_years;
         _state.lcoe = econ.lcoe_xof_kwh;
@@ -1940,8 +2045,10 @@ function suggestEquipment(panelCount) {
     }, 0);
 
     // ── 1. Suggest inverter ──────────────────────────────────────────────
-    // Site isolé → GROWATT (Off-Grid capable); Hybride/Autoconso → GOODWE
-    const brand = (installType === 'autonome') ? 'GROWATT' : 'GOODWE';
+    // Site isolé → GROWATT (Off-Grid capable); Hybride → DEYE; Autoconso → GOODWE
+    const brand = (installType === 'autonome') ? 'GROWATT'
+                : (installType === 'hybride')  ? 'DEYE'
+                : 'GOODWE';
     const catalog = INVERTER_CATALOG[brand] || [];
 
     let typeFilter;
@@ -2517,6 +2624,31 @@ function showEquipmentModal(panelCount, suggested, batSuggested, installType) {
 function closeEquipmentModal() {
     const modal = document.getElementById('equipModal');
     if (modal) { modal.classList.add('hidden'); modal.classList.remove('flex'); }
+}
+
+// =========================================================================
+// MODE SELECTION
+// =========================================================================
+function selectAppMode(mode) {
+    const modal    = document.getElementById('modeSelectModal');
+    const secCons  = document.getElementById('sectionConsommation');
+    const secBilan = document.getElementById('sectionBilanEnergetique');
+
+    if (mode === 'consommation') {
+        // Show Consommation, hide Bilan Énergétique table
+        if (secCons)  secCons.style.display  = '';
+        if (secBilan) secBilan.style.display  = 'none';
+    } else {
+        // Show Bilan Énergétique, hide manual Consommation inputs
+        if (secCons)  secCons.style.display  = 'none';
+        if (secBilan) secBilan.style.display  = '';
+    }
+
+    // Store mode globally for other logic
+    window._appMode = mode;
+
+    // Dismiss modal
+    if (modal) modal.style.display = 'none';
 }
 
 // =========================================================================
