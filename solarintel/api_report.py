@@ -72,6 +72,7 @@ class ApplianceItem(BaseModel):
     power: float = 100       # watts
     hoursDay: float = 0
     hoursNight: float = 0
+    cos_phi: float = 1.0     # facteur de puissance (0.1–1.0)
 
 
 class ReportRequest(BaseModel):
@@ -125,6 +126,10 @@ class ReportRequest(BaseModel):
     kpi_payback_years: float = 0
     kpi_lcoe: float = 0
     kpi_peak_power_kwc: float = 0
+    # Facteur de puissance
+    site_pf_avg: float = 1.0               # FP moyen pondéré du site
+    peak_apparent_power_kva: float = 0     # puissance apparente totale (kVA)
+    inverter_power_kva: float = 0          # capacité nominale onduleur (kVA)
 
 
 # ---------------------------------------------------------------------------
@@ -279,6 +284,24 @@ def _build_pdf(req: ReportRequest) -> bytes:
             status="PASS" if req.battery_model else "INFO",
             detail=req.battery_model or "Aucun stockage",
         ),
+        QAValidation(
+            code="V7", label="Facteur de puissance site ≥ 0,80",
+            status="PASS" if req.site_pf_avg >= 0.80 else "WARNING",
+            detail=f"FP = {req.site_pf_avg:.2f}  →  S_req = {req.peak_apparent_power_kva:.1f} kVA",
+        ),
+        QAValidation(
+            code="V8", label="Capacité onduleur (kVA) ≥ charge apparente",
+            status=(
+                "PASS" if req.inverter_power_kva >= req.peak_apparent_power_kva > 0
+                else "INFO" if req.peak_apparent_power_kva == 0
+                else "WARNING"
+            ),
+            detail=(
+                f"Onduleur {req.inverter_power_kva:.1f} kVA vs charge {req.peak_apparent_power_kva:.1f} kVA"
+                if req.inverter_power_kva > 0
+                else "Onduleur non renseigné"
+            ),
+        ),
     ]
 
     # ── Assemble SolarReport ─────────────────────────────────────────────────
@@ -331,11 +354,14 @@ def _build_pdf(req: ReportRequest) -> bytes:
     report.appliances  = [a.model_dump() for a in req.appliances] if req.appliances else []
     report.equipment   = {
         "inverter": {
-            "Marque":    req.inverter_brand,
-            "Modèle":    req.inverter_model or "—",
-            "Quantité":  f"{req.inverter_qty}",
-            "Prix unit.":f"{_fmt(req.inverter_price_xof)} XOF",
-            "Total":     f"{_fmt(capex_inverter)} XOF",
+            "Marque":          req.inverter_brand,
+            "Modèle":          req.inverter_model or "—",
+            "Quantité":        f"{req.inverter_qty}",
+            "Puissance (kVA)": f"{req.inverter_power_kva:.1f} kVA" if req.inverter_power_kva > 0 else "—",
+            "Charge apparente":f"{req.peak_apparent_power_kva:.1f} kVA (site)",
+            "FP moyen site":   f"{req.site_pf_avg:.2f}",
+            "Prix unit.":      f"{_fmt(req.inverter_price_xof)} XOF",
+            "Total":           f"{_fmt(capex_inverter)} XOF",
         } if req.inverter_model else {},
         "battery": {
             "Modèle":    req.battery_model,

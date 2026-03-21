@@ -688,29 +688,37 @@ class ReportGenerator:
         story.append(_section_header("5. Bilan énergétique"))
         story.append(_subsection_header("5.1  Tableau des consommations"))
 
-        col_w = [CONTENT_W * 0.30, CONTENT_W * 0.08, CONTENT_W * 0.10,
-                 CONTENT_W * 0.12, CONTENT_W * 0.12, CONTENT_W * 0.14, CONTENT_W * 0.14]
+        col_w = [CONTENT_W * 0.26, CONTENT_W * 0.07, CONTENT_W * 0.09,
+                 CONTENT_W * 0.09, CONTENT_W * 0.09, CONTENT_W * 0.08,
+                 CONTENT_W * 0.14, CONTENT_W * 0.10, CONTENT_W * 0.08]
 
-        rows = [["Appareil", "Qté", "W", "h/Jour", "h/Nuit", "kWh Jour", "kWh Nuit"]]
+        rows = [["Appareil", "Qté", "W", "h/Jour", "h/Nuit", "cos φ", "kWh/jour", "kVA", "kWh/mois"]]
 
-        total_day = total_night = 0.0
+        total_kwh = total_kva = 0.0
         for a in appliances:
-            kwh_d = a.get("qty", 1) * a.get("power", 0) * a.get("hoursDay",   0) / 1000
-            kwh_n = a.get("qty", 1) * a.get("power", 0) * a.get("hoursNight", 0) / 1000
-            total_day   += kwh_d
-            total_night += kwh_n
+            qty   = a.get("qty", 1)
+            power = a.get("power", 0)
+            hd    = a.get("hoursDay",   0)
+            hn    = a.get("hoursNight", 0)
+            cp    = a.get("cos_phi", 1.0) or 1.0
+            kwh   = qty * power * (hd + hn) / 1000
+            kva   = qty * power / (cp * 1000) if cp > 0 else 0
+            total_kwh += kwh
+            total_kva += kva
             rows.append([
                 a.get("name", "—"),
-                str(a.get("qty", 1)),
-                f"{a.get('power', 0):.0f}",
-                f"{a.get('hoursDay',   0):.1f}",
-                f"{a.get('hoursNight', 0):.1f}",
-                f"{kwh_d:.2f}",
-                f"{kwh_n:.2f}",
+                str(qty),
+                f"{power:.0f}",
+                f"{hd:.1f}",
+                f"{hn:.1f}",
+                f"{cp:.2f}",
+                f"{kwh:.2f}",
+                f"{kva:.2f}",
+                f"{kwh * 30:.1f}",
             ])
 
-        rows.append(["Total / jour", "", "", "", "",
-                     f"{total_day:.2f}", f"{total_night:.2f}"])
+        rows.append(["Total / jour", "", "", "", "", "",
+                     f"{total_kwh:.2f}", f"{total_kva:.2f}", f"{total_kwh * 30:.1f}"])
 
         t = Table(rows, colWidths=col_w)
         n = len(rows)
@@ -718,17 +726,19 @@ class ReportGenerator:
             ("FONTNAME",      (0,  0), (-1,  0),  "Helvetica-Bold"),
             ("FONTNAME",      (0,  1), (-1, -2),  "Helvetica"),
             ("FONTNAME",      (0, -1), (-1, -1),  "Helvetica-Bold"),
-            ("FONTSIZE",      (0,  0), (-1, -1),  8),
+            ("FONTSIZE",      (0,  0), (-1, -1),  7.5),
             ("TEXTCOLOR",     (0,  0), (-1,  0),  C_WHITE),
             ("BACKGROUND",    (0,  0), (-1,  0),  _THEME["secondary"]),
             ("BACKGROUND",    (0, -1), (-1, -1),  HexColor("#FEF3C7")),
+            ("TEXTCOLOR",     (5,  1), (5,  -1),  HexColor("#A78BFA")),  # cos phi col purple
+            ("TEXTCOLOR",     (7,  1), (7,  -1),  HexColor("#A78BFA")),  # kVA col purple
             ("ALIGN",         (1,  0), (-1, -1),  "RIGHT"),
             ("ALIGN",         (0,  0), (0,  -1),  "LEFT"),
             ("GRID",          (0,  0), (-1, -1),  0.4, C_BORDER),
             ("TOPPADDING",    (0,  0), (-1, -1),  3),
             ("BOTTOMPADDING", (0,  0), (-1, -1),  3),
-            ("LEFTPADDING",   (0,  0), (-1, -1),  5),
-            ("RIGHTPADDING",  (0,  0), (-1, -1),  5),
+            ("LEFTPADDING",   (0,  0), (-1, -1),  4),
+            ("RIGHTPADDING",  (0,  0), (-1, -1),  4),
         ]
         for i in range(1, n - 1):
             if i % 2 == 0:
@@ -737,21 +747,40 @@ class ReportGenerator:
         t.spaceAfter = 4 * mm
         story.append(t)
 
-        # Totaux
+        # Totaux + PF site
         body_sm = ParagraphStyle("bsm", fontName="Helvetica", fontSize=9,
                                  textColor=C_TEXT_SEC, spaceAfter=1 * mm)
+        total_active_peak = sum(a.get("qty", 1) * a.get("power", 0) for a in appliances)
+        total_app_peak    = sum(
+            a.get("qty", 1) * a.get("power", 0) / (a.get("cos_phi", 1.0) or 1.0)
+            for a in appliances
+        )
+        site_pf = total_active_peak / total_app_peak if total_app_peak > 0 else 1.0
+        monthly = total_kwh * 30
         story.append(Paragraph(
             f"Consommation journalière totale : "
-            f"<b>{total_day + total_night:.2f} kWh/jour</b>  "
-            f"({total_day:.2f} kWh jour + {total_night:.2f} kWh nuit)",
+            f"<b>{total_kwh:.2f} kWh/jour</b>  ·  "
+            f"Puissance apparente crête : <b>{total_kva:.2f} kVA</b>  ·  "
+            f"FP moyen site : <b>{site_pf:.2f}</b>",
             body_sm,
         ))
-        monthly = (total_day + total_night) * 30
         story.append(Paragraph(
             f"Consommation mensuelle estimée : <b>{monthly:.0f} kWh/mois</b>  "
             f"· Annuelle : <b>{monthly * 12:.0f} kWh/an</b>",
             body_sm,
         ))
+        if site_pf < 0.80:
+            warn_style = ParagraphStyle(
+                "warn", fontName="Helvetica-Bold", fontSize=9,
+                textColor=HexColor("#F97316"), spaceAfter=2 * mm,
+            )
+            story.append(Paragraph(
+                f"⚠ ATTENTION : FP moyen site = {site_pf:.2f} < 0,80 — l'onduleur doit être "
+                f"sélectionné sur la base de {total_kva:.1f} kVA (puissance apparente) "
+                f"et non sur les kW seuls. Un facteur de puissance faible entraîne une "
+                f"surtension des câbles et un échauffement prématuré de l'onduleur.",
+                warn_style,
+            ))
 
     # ── Section 6 : Équipements ───────────────────────────────────────────────
 
@@ -846,6 +875,25 @@ class ReportGenerator:
             "Simulation pvlib (TMY PVGIS) · ModelChain · Pertes système (salissure, "
             "mismatch, câblage, température) · Économie SENELEC · Dégradation 0.5 %/an "
             "· Durée de vie 25 ans · LCOE = CAPEX / Σ(Production_i × (1-dég)^i).",
+            body_sm,
+        ))
+
+        story.append(_subsection_header("Note technique — Facteur de puissance (cos φ)"))
+        story.append(Paragraph(
+            "Le <b>facteur de puissance</b> (cos φ) mesure le rapport entre la puissance "
+            "active P (kW) et la puissance apparente S (kVA) : <b>S = P / cos φ</b>. "
+            "Les charges inductives (climatiseurs, compresseurs, moteurs) présentent "
+            "typiquement cos φ = 0,70–0,85, tandis que les charges résistives (chauffage) "
+            "ou les alimentations à découpage modernes (LED, onduleurs) atteignent 0,90–1,0.",
+            body_sm,
+        ))
+        story.append(Paragraph(
+            "<b>Impact sur le dimensionnement :</b> Un site avec cos φ = 0,80 nécessite "
+            "un onduleur capable de délivrer S = P / 0,80 en kVA, soit 25 % de capacité "
+            "supplémentaire par rapport aux kW nominaux. Un sous-dimensionnement en kVA "
+            "provoque une surcharge thermique, réduit la durée de vie et peut déclencher "
+            "les protections de l'onduleur. Recommandation : sélectionner l'onduleur sur "
+            "la base de la puissance apparente totale du site avec une marge de 10–20 %.",
             body_sm,
         ))
 

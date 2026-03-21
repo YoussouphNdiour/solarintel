@@ -495,33 +495,36 @@
                     <table class="w-full" id="applianceTable" style="min-width:520px;font-size:0.78rem;">
                         <thead>
                             <tr class="text-slate-500 border-b border-slate-700 text-left">
-                                <th class="py-1.5 pr-1" style="min-width:120px">Appareil</th>
-                                <th class="py-1.5 px-1 text-center" style="width:44px">Qté</th>
-                                <th class="py-1.5 px-1 text-center" style="width:60px">W</th>
-                                <th class="py-1.5 px-1 text-center" style="width:52px">h/Jour</th>
-                                <th class="py-1.5 px-1 text-center" style="width:52px">h/Nuit</th>
-                                <th class="py-1.5 px-1 text-right text-solar-amber" style="width:62px">kWh Jour</th>
-                                <th class="py-1.5 px-1 text-right text-blue-400" style="width:62px">kWh Nuit</th>
+                                <th class="py-1.5 pr-1" style="min-width:110px">Appareil</th>
+                                <th class="py-1.5 px-1 text-center" style="width:40px">Qté</th>
+                                <th class="py-1.5 px-1 text-center" style="width:58px">W</th>
+                                <th class="py-1.5 px-1 text-center" style="width:48px">h/Jour</th>
+                                <th class="py-1.5 px-1 text-center" style="width:48px">h/Nuit</th>
+                                <th class="py-1.5 px-1 text-center text-purple-400" style="width:48px" title="Facteur de puissance (cos φ)">cos φ</th>
+                                <th class="py-1.5 px-1 text-right text-solar-amber" style="width:58px">kWh/j</th>
+                                <th class="py-1.5 px-1 text-right text-purple-400" style="width:52px">kVA</th>
                                 <th class="py-1.5 pl-1 w-6"></th>
                             </tr>
                         </thead>
                         <tbody id="applianceTbody"></tbody>
                         <tfoot class="border-t border-slate-700">
                             <tr class="font-semibold text-slate-300">
-                                <td colspan="4" class="py-1.5 pr-2 text-right text-slate-400 text-xs">Total / jour</td>
+                                <td colspan="5" class="py-1.5 pr-2 text-right text-slate-400 text-xs">Total / jour</td>
+                                <td></td>
                                 <td id="totalDailyKwh" class="py-1.5 px-1 text-right font-mono text-solar-amber">0.00</td>
-                                <td id="totalDayKwh"   class="py-1.5 px-1 text-right font-mono text-solar-amber">0.00</td>
-                                <td id="totalNightKwh" class="py-1.5 px-1 text-right font-mono text-blue-400">0.00</td>
+                                <td id="totalApparentKva" class="py-1.5 px-1 text-right font-mono text-purple-400">0.0</td>
                                 <td></td>
                             </tr>
                             <tr class="text-slate-400 text-xs">
-                                <td colspan="4" class="pb-1.5 pr-2 text-right">Mensuel (×30)</td>
-                                <td id="totalMonthlyKwh" class="pb-1.5 px-1 text-right font-mono text-green-400" colspan="3">0.0 kWh</td>
+                                <td colspan="5" class="pb-1 pr-2 text-right">Mensuel (×30) · FP moyen site</td>
+                                <td id="sitePfAvg" class="pb-1 px-1 text-right font-mono text-purple-400">—</td>
+                                <td id="totalMonthlyKwh" class="pb-1 px-1 text-right font-mono text-green-400" colspan="2">0.0 kWh</td>
                                 <td></td>
                             </tr>
                             <tr class="text-slate-500 text-xs">
-                                <td colspan="4" class="pb-1 pr-2 text-right">Puissance nocturne</td>
-                                <td id="peakNightW" class="pb-1 px-1 text-right font-mono text-blue-300" colspan="3">— W</td>
+                                <td colspan="5" class="pb-1 pr-2 text-right">Puissance nocturne</td>
+                                <td></td>
+                                <td id="peakNightW" class="pb-1 px-1 text-right font-mono text-blue-300" colspan="2">— W</td>
                                 <td></td>
                             </tr>
                         </tfoot>
@@ -532,6 +535,10 @@
                     <i data-lucide="plus" class="w-3 h-3"></i>
                     Ajouter un appareil
                 </button>
+                <div id="pfAlert" class="hidden mt-2 px-3 py-2 rounded-lg bg-orange-950/60 border border-orange-700/50 text-orange-300 text-xs flex items-start gap-2">
+                    <i data-lucide="alert-triangle" class="w-3.5 h-3.5 flex-shrink-0 mt-0.5"></i>
+                    <span id="pfAlertText">FP moyen du site inférieur à 0,8 — vérifier le dimensionnement de l'onduleur en kVA.</span>
+                </div>
                 <!-- Paramètres financiers (nécessaires pour calcul d'économies et ROI) -->
                 <div class="mt-4 pt-4 border-t border-slate-700">
                     <p class="text-xs text-slate-500 mb-3 flex items-center gap-1.5">
@@ -1008,27 +1015,27 @@ const PANEL_CATALOG = {
 // =========================================================================
 const INVERTER_CATALOG = {
     "GOODWE": [
-        { model: "GW3600-EH",  power_kw: 3.6, phase: "Monophasé", type: "Hybride",  defaultPrice: 350000 },
-        { model: "GW5000-EH",  power_kw: 5.0, phase: "Monophasé", type: "Hybride",  defaultPrice: 450000 },
-        { model: "GW8000-DT",  power_kw: 8.0, phase: "Triphasé",  type: "Hybride",  defaultPrice: 620000 },
-        { model: "GW10000-DT", power_kw: 10.0, phase: "Triphasé", type: "Hybride",  defaultPrice: 1450000 },
-        { model: "GW15000-DT", power_kw: 15.0, phase: "Triphasé", type: "Hybride",  defaultPrice: 1950000 },
-        { model: "GW20KT",     power_kw: 20.0, phase: "Triphasé", type: "Réseau",   defaultPrice: 1150000 },
+        { model: "GW3600-EH",  power_kw: 3.6,  power_kva: 3.6,  phase: "Monophasé", type: "Hybride",  defaultPrice: 350000  },
+        { model: "GW5000-EH",  power_kw: 5.0,  power_kva: 5.0,  phase: "Monophasé", type: "Hybride",  defaultPrice: 450000  },
+        { model: "GW8000-DT",  power_kw: 8.0,  power_kva: 8.0,  phase: "Triphasé",  type: "Hybride",  defaultPrice: 620000  },
+        { model: "GW10000-DT", power_kw: 10.0, power_kva: 10.0, phase: "Triphasé",  type: "Hybride",  defaultPrice: 1450000 },
+        { model: "GW15000-DT", power_kw: 15.0, power_kva: 15.0, phase: "Triphasé",  type: "Hybride",  defaultPrice: 1950000 },
+        { model: "GW20KT",     power_kw: 20.0, power_kva: 20.0, phase: "Triphasé",  type: "Réseau",   defaultPrice: 1150000 },
     ],
     "GROWATT": [
-        { model: "MIN 3600TL-XH",  power_kw: 3.6, phase: "Monophasé", type: "Hybride",         defaultPrice: 320000 },
-        { model: "SPF 5000 ES",    power_kw: 5.0, phase: "Monophasé", type: "Off-Grid/Hybride", defaultPrice: 420000 },
-        { model: "MIN 6000TL-XH",  power_kw: 6.0, phase: "Monophasé", type: "Hybride",         defaultPrice: 490000 },
-        { model: "SPF 10000T DVM", power_kw: 10.0, phase: "Triphasé", type: "Off-Grid/Hybride", defaultPrice: 720000 },
-        { model: "MID 15KTL3-X",   power_kw: 15.0, phase: "Triphasé", type: "Réseau",          defaultPrice: 900000 },
-        { model: "MID 20KTL3-X",   power_kw: 20.0, phase: "Triphasé", type: "Réseau",          defaultPrice: 1100000 },
+        { model: "MIN 3600TL-XH",  power_kw: 3.6,  power_kva: 3.6,  phase: "Monophasé", type: "Hybride",         defaultPrice: 320000 },
+        { model: "SPF 5000 ES",    power_kw: 5.0,  power_kva: 5.0,  phase: "Monophasé", type: "Off-Grid/Hybride", defaultPrice: 420000 },
+        { model: "MIN 6000TL-XH",  power_kw: 6.0,  power_kva: 6.0,  phase: "Monophasé", type: "Hybride",         defaultPrice: 490000 },
+        { model: "SPF 10000T DVM", power_kw: 10.0, power_kva: 10.0, phase: "Triphasé",  type: "Off-Grid/Hybride", defaultPrice: 720000 },
+        { model: "MID 15KTL3-X",   power_kw: 15.0, power_kva: 15.0, phase: "Triphasé",  type: "Réseau",          defaultPrice: 900000 },
+        { model: "MID 20KTL3-X",   power_kw: 20.0, power_kva: 20.0, phase: "Triphasé",  type: "Réseau",          defaultPrice: 1100000 },
     ],
     "DEYE": [
-        { model: "SUN-5K-SG01LP1",  power_kw: 5.0,  phase: "Monophasé", type: "Hybride", defaultPrice: 1875000 },
-        { model: "SUN-12K-SG01LP1", power_kw: 12.0, phase: "Monophasé", type: "Hybride", defaultPrice: 1950000 },
-        { model: "SUN-12K-SG04LP3", power_kw: 12.0, phase: "Triphasé",  type: "Hybride", defaultPrice: 3600000 },
-        { model: "SUN-30K-SG01LP3", power_kw: 30.0, phase: "Triphasé",  type: "Hybride", defaultPrice: 2350000 },
-        { model: "SUN-50K-SG01LP3", power_kw: 50.0, phase: "Triphasé",  type: "Hybride", defaultPrice: 2350000 },
+        { model: "SUN-5K-SG01LP1",  power_kw: 5.0,  power_kva: 5.0,  phase: "Monophasé", type: "Hybride", defaultPrice: 1875000 },
+        { model: "SUN-12K-SG01LP1", power_kw: 12.0, power_kva: 12.0, phase: "Monophasé", type: "Hybride", defaultPrice: 1950000 },
+        { model: "SUN-12K-SG04LP3", power_kw: 12.0, power_kva: 12.0, phase: "Triphasé",  type: "Hybride", defaultPrice: 3600000 },
+        { model: "SUN-30K-SG01LP3", power_kw: 30.0, power_kva: 30.0, phase: "Triphasé",  type: "Hybride", defaultPrice: 2350000 },
+        { model: "SUN-50K-SG01LP3", power_kw: 50.0, power_kva: 50.0, phase: "Triphasé",  type: "Hybride", defaultPrice: 2350000 },
     ],
 };
 
@@ -1046,11 +1053,11 @@ const BATTERY_CATALOG = [
 // APPLIANCE TABLE DATA
 // =========================================================================
 let applianceRows = [
-    { name: "Climatiseur 1.5CV", qty: 1, power: 1100, hoursDay: 2,  hoursNight: 8 },
-    { name: "Réfrigérateur",     qty: 1, power: 150,  hoursDay: 24, hoursNight: 0 },
-    { name: "Éclairage LED",     qty: 10, power: 10,  hoursDay: 2,  hoursNight: 5 },
-    { name: "Télévision",        qty: 1, power: 100,  hoursDay: 4,  hoursNight: 4 },
-    { name: "Chargeurs USB",     qty: 4, power: 10,   hoursDay: 5,  hoursNight: 5 },
+    { name: "Climatiseur 1.5CV", qty: 1, power: 1100, hoursDay: 2,  hoursNight: 8,  cos_phi: 0.80 },
+    { name: "Réfrigérateur",     qty: 1, power: 150,  hoursDay: 24, hoursNight: 0,  cos_phi: 0.85 },
+    { name: "Éclairage LED",     qty: 10, power: 10,  hoursDay: 2,  hoursNight: 5,  cos_phi: 0.95 },
+    { name: "Télévision",        qty: 1, power: 100,  hoursDay: 4,  hoursNight: 4,  cos_phi: 0.90 },
+    { name: "Chargeurs USB",     qty: 4, power: 10,   hoursDay: 5,  hoursNight: 5,  cos_phi: 1.00 },
 ];
 
 // =========================================================================
@@ -1336,7 +1343,7 @@ function applyInverterSpecs(inv) {
     document.getElementById('inverterPrice').value = inv.defaultPrice;
     const el = document.getElementById('inverterSpecs');
     el.innerHTML = `
-        <span class="spec-badge"><i data-lucide="zap" class="w-3 h-3"></i>${inv.power_kw} kW</span>
+        <span class="spec-badge"><i data-lucide="zap" class="w-3 h-3"></i>${inv.power_kw} kW / ${inv.power_kva} kVA</span>
         <span class="spec-badge">${inv.phase}</span>
         <span class="spec-badge">${inv.type}</span>
     `;
@@ -1419,46 +1426,51 @@ function renderApplianceTable() {
     const tbody = document.getElementById('applianceTbody');
     if (!tbody) return;
     tbody.innerHTML = '';
-    let totalDaily = 0, totalDayKwh = 0, totalNightKwh = 0;
+    let totalDailyKwh = 0, totalApparentKva = 0;
 
     applianceRows.forEach((row, idx) => {
-        const kwhDay   = (row.qty * row.power * row.hoursDay)   / 1000;
-        const kwhNight = (row.qty * row.power * row.hoursNight) / 1000;
-        const kwh      = kwhDay + kwhNight;
-        totalDaily     += kwh;
-        totalDayKwh    += kwhDay;
-        totalNightKwh  += kwhNight;
+        const cosPhi   = row.cos_phi != null ? row.cos_phi : 1.0;
+        const kwhTotal = (row.qty * row.power * (row.hoursDay + row.hoursNight)) / 1000;
+        const kva      = cosPhi > 0 ? (row.qty * row.power) / (cosPhi * 1000) : 0;
+        totalDailyKwh    += kwhTotal;
+        totalApparentKva += kva;
         const tr = document.createElement('tr');
         tr.className = 'border-b border-slate-800/60';
         tr.innerHTML = `
             <td class="py-1.5 pr-1">
                 <input type="text" value="${row.name.replace(/"/g, '&quot;')}"
-                    style="min-width:110px"
+                    style="min-width:100px"
                     class="si-input py-1 px-2" style="font-size:0.78rem"
                     oninput="applianceRows[${idx}].name=this.value">
             </td>
             <td class="py-1.5 px-1">
                 <input type="number" value="${row.qty}" min="1"
-                    class="si-input text-center py-1 px-1" style="width:42px;font-size:0.78rem"
+                    class="si-input text-center py-1 px-1" style="width:38px;font-size:0.78rem"
                     oninput="applianceRows[${idx}].qty=+this.value;refreshApplianceTotals()">
             </td>
             <td class="py-1.5 px-1">
                 <input type="number" value="${row.power}" min="0"
-                    class="si-input text-center py-1 px-1" style="width:58px;font-size:0.78rem"
+                    class="si-input text-center py-1 px-1" style="width:54px;font-size:0.78rem"
                     oninput="applianceRows[${idx}].power=+this.value;refreshApplianceTotals()">
             </td>
             <td class="py-1.5 px-1">
                 <input type="number" value="${row.hoursDay}" min="0" max="24" step="0.5"
-                    class="si-input text-center py-1 px-1" style="width:50px;font-size:0.78rem"
+                    class="si-input text-center py-1 px-1" style="width:44px;font-size:0.78rem"
                     oninput="applianceRows[${idx}].hoursDay=+this.value;refreshApplianceTotals()">
             </td>
             <td class="py-1.5 px-1">
                 <input type="number" value="${row.hoursNight}" min="0" max="24" step="0.5"
-                    class="si-input text-center py-1 px-1" style="width:50px;font-size:0.78rem"
+                    class="si-input text-center py-1 px-1" style="width:44px;font-size:0.78rem"
                     oninput="applianceRows[${idx}].hoursNight=+this.value;refreshApplianceTotals()">
             </td>
-            <td class="py-1.5 px-1 text-right font-mono text-solar-amber" style="font-size:0.78rem">${kwhDay.toFixed(2)}</td>
-            <td class="py-1.5 px-1 text-right font-mono text-blue-400" style="font-size:0.78rem">${kwhNight.toFixed(2)}</td>
+            <td class="py-1.5 px-1">
+                <input type="number" value="${cosPhi}" min="0.1" max="1" step="0.05"
+                    class="si-input text-center py-1 px-1" style="width:44px;font-size:0.78rem"
+                    title="Facteur de puissance (cos φ) — clim/moteur: 0.8, LED: 0.95, résistif: 1.0"
+                    oninput="applianceRows[${idx}].cos_phi=+this.value;refreshApplianceTotals()">
+            </td>
+            <td class="py-1.5 px-1 text-right font-mono text-solar-amber" style="font-size:0.78rem">${kwhTotal.toFixed(2)}</td>
+            <td class="py-1.5 px-1 text-right font-mono text-purple-400" style="font-size:0.78rem">${kva.toFixed(2)}</td>
             <td class="py-1.5 pl-1">
                 <button onclick="removeApplianceRow(${idx})" class="text-slate-600 hover:text-red-400 transition-colors">
                     <i data-lucide="x" class="w-3 h-3"></i>
@@ -1468,40 +1480,40 @@ function renderApplianceTable() {
         tbody.appendChild(tr);
     });
 
-    _syncApplianceTotals(totalDaily, totalDayKwh, totalNightKwh);
+    _syncApplianceTotals(totalDailyKwh, totalApparentKva);
     _safeCreateIcons();
 }
 
 function refreshApplianceTotals() {
-    let totalDaily = 0, totalDayKwh = 0, totalNightKwh = 0;
+    let totalDailyKwh = 0, totalApparentKva = 0;
     applianceRows.forEach(function(row) {
-        const kwhDay   = (row.qty * row.power * row.hoursDay)   / 1000;
-        const kwhNight = (row.qty * row.power * row.hoursNight) / 1000;
-        totalDayKwh   += kwhDay;
-        totalNightKwh += kwhNight;
-        totalDaily    += kwhDay + kwhNight;
+        const cosPhi  = row.cos_phi != null ? row.cos_phi : 1.0;
+        const kwhTot  = (row.qty * row.power * (row.hoursDay + row.hoursNight)) / 1000;
+        const kva     = cosPhi > 0 ? (row.qty * row.power) / (cosPhi * 1000) : 0;
+        totalDailyKwh    += kwhTot;
+        totalApparentKva += kva;
     });
-    _syncApplianceTotals(totalDaily, totalDayKwh, totalNightKwh);
-    // Refresh table cell values in-place (avoid full re-render)
+    _syncApplianceTotals(totalDailyKwh, totalApparentKva);
+    // Refresh computed cell values in-place (avoid full re-render)
     const rows = document.querySelectorAll('#applianceTbody tr');
     rows.forEach(function(tr, idx) {
         const row = applianceRows[idx];
         if (!row) return;
-        const kwhDay   = (row.qty * row.power * row.hoursDay)   / 1000;
-        const kwhNight = (row.qty * row.power * row.hoursNight) / 1000;
+        const cosPhi  = row.cos_phi != null ? row.cos_phi : 1.0;
+        const kwhTot  = (row.qty * row.power * (row.hoursDay + row.hoursNight)) / 1000;
+        const kva     = cosPhi > 0 ? (row.qty * row.power) / (cosPhi * 1000) : 0;
         const cells = tr.querySelectorAll('td');
-        if (cells[5]) cells[5].textContent = kwhDay.toFixed(2);
-        if (cells[6]) cells[6].textContent = kwhNight.toFixed(2);
+        if (cells[6]) cells[6].textContent = kwhTot.toFixed(2);
+        if (cells[7]) cells[7].textContent = kva.toFixed(2);
     });
 }
 
-function _syncApplianceTotals(totalDaily, totalDayKwh, totalNightKwh) {
+function _syncApplianceTotals(totalDailyKwh, totalApparentKva) {
     const _set = function(id, txt) { const el=document.getElementById(id); if(el) el.textContent=txt; };
 
-    _set('totalDailyKwh',  totalDaily.toFixed(2));
-    _set('totalDayKwh',    totalDayKwh.toFixed(2));
-    _set('totalNightKwh',  totalNightKwh.toFixed(2));
-    _set('totalMonthlyKwh', (totalDaily * 30).toFixed(1) + ' kWh');
+    _set('totalDailyKwh',    totalDailyKwh.toFixed(2));
+    _set('totalApparentKva', totalApparentKva.toFixed(2));
+    _set('totalMonthlyKwh', (totalDailyKwh * 30).toFixed(1) + ' kWh');
 
     // Puissance nocturne crête (W) — somme des appareils actifs la nuit
     const peakNight = applianceRows.reduce(function(s, r) {
@@ -1509,14 +1521,35 @@ function _syncApplianceTotals(totalDaily, totalDayKwh, totalNightKwh) {
     }, 0);
     _set('peakNightW', peakNight > 0 ? peakNight.toLocaleString('fr-FR') + ' W' : '— W');
 
+    // Facteur de puissance moyen du site
+    const totalActivePeak = applianceRows.reduce(function(s,r){ return s + r.qty*r.power; }, 0);
+    const totalApparentPeak = applianceRows.reduce(function(s,r){
+        const cp = r.cos_phi != null ? r.cos_phi : 1.0;
+        return s + (cp > 0 ? r.qty*r.power/cp : r.qty*r.power);
+    }, 0);
+    const sitePf = totalApparentPeak > 0 ? totalActivePeak / totalApparentPeak : 1.0;
+    _set('sitePfAvg', sitePf.toFixed(2));
+
+    // Alerte si FP < 0.8
+    const pfAlert = document.getElementById('pfAlert');
+    const pfAlertText = document.getElementById('pfAlertText');
+    if (pfAlert) {
+        if (sitePf < 0.80 && totalActivePeak > 0) {
+            pfAlert.classList.remove('hidden');
+            pfAlertText.textContent = `FP moyen site = ${sitePf.toFixed(2)} < 0,80 — l'onduleur doit être dimensionné en kVA (${totalApparentKva.toFixed(1)} kVA requis), pas seulement en kW.`;
+            _safeCreateIcons();
+        } else {
+            pfAlert.classList.add('hidden');
+        }
+    }
+
     // Sync consumption fields from appliance table
-    const monthly = Math.round(totalDaily * 30);
+    const monthly = Math.round(totalDailyKwh * 30);
     if (monthly > 0) {
         document.getElementById('monthlyConsumption').value = monthly;
         document.getElementById('annualConsumption').value  = monthly * 12;
         _state.monthlyConsumption = monthly;
         _state.annualConsumption  = monthly * 12;
-        // Recalculer les KPIs si des panneaux existent déjà
         if (STATE.panelCount > 0) {
             updateKPIs();
         }
@@ -1524,7 +1557,7 @@ function _syncApplianceTotals(totalDaily, totalDayKwh, totalNightKwh) {
 }
 
 function addApplianceRow() {
-    applianceRows.push({ name: "Nouvel appareil", qty: 1, power: 100, hoursDay: 4, hoursNight: 0 });
+    applianceRows.push({ name: "Nouvel appareil", qty: 1, power: 100, hoursDay: 4, hoursNight: 0, cos_phi: 1.0 });
     renderApplianceTable();
 }
 
@@ -1582,6 +1615,26 @@ async function generateReport() {
         daily_kwh_day:    applianceRows.reduce(function(s,r){return s+(r.qty*r.power*r.hoursDay)/1000;},0),
         daily_kwh_night:  applianceRows.reduce(function(s,r){return s+(r.qty*r.power*r.hoursNight)/1000;},0),
         peak_night_w:     applianceRows.reduce(function(s,r){return s+(r.hoursNight>0?r.qty*r.power:0);},0),
+        // Facteur de puissance
+        peak_apparent_power_kva: (function(){
+            const totalActivePeak = applianceRows.reduce(function(s,r){return s+r.qty*r.power;},0);
+            const totalApparentKva = applianceRows.reduce(function(s,r){
+                const cp=r.cos_phi!=null?r.cos_phi:1.0; return s+(cp>0?r.qty*r.power/(cp*1000):r.qty*r.power/1000);},0);
+            return Math.round(totalApparentKva * 100) / 100;
+        })(),
+        site_pf_avg: (function(){
+            const totalActivePeak = applianceRows.reduce(function(s,r){return s+r.qty*r.power;},0);
+            const totalApparentPeak = applianceRows.reduce(function(s,r){
+                const cp=r.cos_phi!=null?r.cos_phi:1.0; return s+(cp>0?r.qty*r.power/cp:r.qty*r.power);},0);
+            return totalApparentPeak>0 ? Math.round(totalActivePeak/totalApparentPeak*100)/100 : 1.0;
+        })(),
+        inverter_power_kva: (function(){
+            const brand = document.getElementById('inverterBrand')?.value || '';
+            const model = document.getElementById('inverterModel')?.value || '';
+            const inv = (INVERTER_CATALOG[brand]||[]).find(function(i){return i.model===model;});
+            const qty = +(document.getElementById('inverterQty')?.value || 1);
+            return inv ? inv.power_kva * qty : 0;
+        })(),
         // Métadonnées rapport
         company_name:    document.getElementById('companyName')?.value  || 'SolarIntel',
         report_title:    document.getElementById('reportTitle')?.value  || 'Étude de dimensionnement PV',
