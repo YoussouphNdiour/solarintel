@@ -130,6 +130,16 @@ class ReportRequest(BaseModel):
     site_pf_avg: float = 1.0               # FP moyen pondéré du site
     peak_apparent_power_kva: float = 0     # puissance apparente totale (kVA)
     inverter_power_kva: float = 0          # capacité nominale onduleur (kVA)
+    # Capture carte (screenshot ArcGIS base64)
+    map_screenshot_b64: str = ""   # data URL PNG "data:image/png;base64,..."
+    # Calepinage
+    polygon_area_m2: float = 0             # surface totale de la zone tracée (m²)
+    panel_width_mm: float = 1134           # largeur panneau (mm)
+    panel_height_mm: float = 2278          # hauteur panneau (mm)
+    panel_orientation: str = "portrait"    # portrait | paysage
+    spacing_h_cm: float = 2               # espacement horizontal entre panneaux (cm)
+    spacing_v_cm: float = 5               # espacement vertical entre rangées (cm)
+    azimuth_deg: float = 180              # azimut toiture (° — 180 = plein sud)
 
 
 # ---------------------------------------------------------------------------
@@ -378,6 +388,115 @@ def _build_pdf(req: ReportRequest) -> bytes:
         },
     }
 
+    # ── Analyse SENELEC mensuelle ─────────────────────────────────────────────
+    from solarintel.config.senelec import compute_bill_tranches
+    MONTHS_FR = ["Jan", "Fév", "Mar", "Avr", "Mai", "Jun",
+                 "Jul", "Aoû", "Sep", "Oct", "Nov", "Déc"]
+
+    monthly_prod_kwh = _estimate_monthly_kwh(req.kpi_production_kwh)
+    ann_cons = req.annual_consumption_kwh or (req.daily_kwh_total * 365)
+    monthly_cons_kwh = [ann_cons / 12] * 12
+
+    if ann_cons > 0:
+        tariff_code = (req.senelec_tariff or "DPP").replace("_WOYOFAL", "")
+        use_woyofal = "WOYOFAL" in (req.senelec_tariff or "")
+        senelec_months = []
+        for m in range(12):
+            cons_m = monthly_cons_kwh[m]
+            prod_m = monthly_prod_kwh[m]
+            bb = compute_bill_tranches(cons_m, tariff_code, use_woyofal)
+            net  = max(0.0, cons_m - prod_m)
+            ba = compute_bill_tranches(net, tariff_code, use_woyofal)
+            cov = round(min(100, prod_m / cons_m * 100), 1) if cons_m > 0 else 0
+            senelec_months.append({
+                "month": MONTHS_FR[m],
+                "cons_kwh":  round(cons_m, 1),
+                "prod_kwh":  round(prod_m, 1),
+                "net_kwh":   round(net, 1),
+                "before_xof": bb["total_xof"],
+                "after_xof":  ba["total_xof"],
+                "saving_xof": round(bb["total_xof"] - ba["total_xof"]),
+                "coverage_pct": cov,
+                "t1_kwh": bb["breakdown"]["tranche_1_kwh"],
+                "t2_kwh": bb["breakdown"]["tranche_2_kwh"],
+                "t3_kwh": bb["breakdown"]["tranche_3_kwh"],
+                "t1_xof": bb["breakdown"]["bill_t1_xof"],
+                "t2_xof": bb["breakdown"]["bill_t2_xof"],
+                "t3_xof": bb["breakdown"]["bill_t3_xof"],
+                "tarif_eff": bb["tarif_effectif_moyen_xof_kwh"],
+            })
+        report.senelec_analysis = {
+            "tariff_code":       req.senelec_tariff or "DPP",
+            "monthly":           senelec_months,
+            "annual_saving_xof": sum(m["saving_xof"] for m in senelec_months),
+            "bill_before":       [m["before_xof"]  for m in senelec_months],
+            "bill_after":        [m["after_xof"]   for m in senelec_months],
+            "monthly_prod":      monthly_prod_kwh,
+            "monthly_cons":      monthly_cons_kwh,
+        }
+    else:
+        report.senelec_analysis = None
+
+    # ── Calepinage ────────────────────────────────────────────────────────────
+    import math as _math
+
+    # ── Capture carte → fichier temporaire PNG ────────────────────────────────
+    _map_img_path: str | None = None
+    if req.map_screenshot_b64:
+        try:
+            import base64 as _b64
+            raw = req.map_screenshot_b64
+            if "," in raw:
+                raw = raw.split(",", 1)[1]
+            img_bytes = _b64.b64decode(raw)
+            _fd, _map_img_path = tempfile.mkstemp(suffix=".png")
+            os.write(_fd, img_bytes)
+            os.close(_fd)
+        except Exception as _exc:
+            logger.warning("Impossible de décoder la capture carte : %s", _exc)
+            _map_img_path = None
+
+    if req.polygon_area_m2 > 0 and req.panel_count > 0:
+        pw = req.panel_width_mm  / 1000
+        ph = req.panel_height_mm / 1000
+        if req.panel_orientation == "paysage":
+            pw, ph = ph, pw
+        cell_w = pw + req.spacing_h_cm / 100
+        cell_h = ph + req.spacing_v_cm / 100
+
+        # Espacement anti-ombrage (solstice d'hiver, élévation soleil conservatrice 25°)
+        tilt_deg = round(req.latitude, 1) if req.latitude > 0 else 15.0
+        tilt_rad = _math.radians(tilt_deg)
+        elev_rad = _math.radians(25)
+        row_spacing = ph * (_math.cos(tilt_rad) + _math.sin(tilt_rad) / _math.tan(elev_rad))
+
+        # Estimation rangées / colonnes
+        est_cols = max(1, round(_math.sqrt(req.panel_count * cell_w / cell_h)))
+        est_rows = max(1, _math.ceil(req.panel_count / est_cols))
+        used_area = req.panel_count * pw * ph
+
+        report.calepinage = {
+            "polygon_area_m2":  round(req.polygon_area_m2, 1),
+            "panel_count":      req.panel_count,
+            "panel_dims":       f"{int(req.panel_width_mm)} × {int(req.panel_height_mm)} mm",
+            "orientation":      req.panel_orientation.capitalize(),
+            "spacing_h_cm":     req.spacing_h_cm,
+            "spacing_v_cm":     req.spacing_v_cm,
+            "used_area_m2":     round(used_area, 1),
+            "free_area_m2":     round(req.polygon_area_m2 - used_area, 1),
+            "coverage_pct":     round(used_area / req.polygon_area_m2 * 100, 1),
+            "est_rows":         est_rows,
+            "est_cols":         est_cols,
+            "row_spacing_m":    round(row_spacing, 2),
+            "tilt_deg":         tilt_deg,
+            "azimuth_deg":      req.azimuth_deg,
+            "latitude":         req.latitude,
+            "longitude":        req.longitude,
+            "map_img_path":     _map_img_path,   # chemin tmp PNG ou None
+        }
+    else:
+        report.calepinage = {"map_img_path": _map_img_path} if _map_img_path else None
+
     # ── Logo — priorité : logo uploadé par l'utilisateur, sinon assets/ ────────
     _here = os.path.dirname(os.path.abspath(__file__))
     logo_path: str | None = None
@@ -427,6 +546,11 @@ def _build_pdf(req: ReportRequest) -> bytes:
         if _user_logo_tmp:
             try:
                 os.unlink(_user_logo_tmp)
+            except OSError:
+                pass
+        if _map_img_path:
+            try:
+                os.unlink(_map_img_path)
             except OSError:
                 pass
 

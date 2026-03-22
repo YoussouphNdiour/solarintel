@@ -16,12 +16,16 @@ from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.platypus import (
     BaseDocTemplate, Frame, NextPageTemplate, PageBreak,
-    PageTemplate, Paragraph, Spacer, Table, TableStyle, KeepTogether,
+    PageTemplate, Paragraph, Spacer, Table, TableStyle, KeepTogether, Image,
 )
 
 from solarintel.reports.models import SolarReport
 from solarintel.reports.theme import ReportTheme
-from solarintel.reports.charts import build_monthly_production_chart, build_cashflow_chart
+from solarintel.reports.charts import (
+    build_monthly_production_chart, build_cashflow_chart,
+    build_load_profile_chart, build_monthly_comparison_chart,
+    build_senelec_billing_chart, build_usage_category_chart,
+)
 from solarintel.config.constants import PVLIB_MODULES, ECONOMIC_DEFAULTS
 
 PAGE_W, PAGE_H = A4
@@ -538,11 +542,20 @@ class ReportGenerator:
         self._add_system_config(story)
         self._add_simulation(story)
         self._add_economics(story)
+
+        sec = 5  # numéro de la prochaine section (dynamique)
         if getattr(r, "appliances", None):
-            self._add_energy_balance(story)
-        self._add_equipment(story)
-        self._add_qa(story)
-        self._add_appendix(story)
+            self._add_energy_balance(story, sec)
+            sec += 1
+        if getattr(r, "senelec_analysis", None):
+            self._add_senelec_analysis(story, sec)
+            sec += 1
+        if getattr(r, "calepinage", None):
+            self._add_calepinage(story, sec)
+            sec += 1
+        self._add_equipment(story, sec);  sec += 1
+        self._add_qa(story, sec);         sec += 1
+        self._add_appendix(story, sec)
 
         doc.build(story)
         return os.path.abspath(output_path)
@@ -679,14 +692,14 @@ class ReportGenerator:
 
     # ── Section 5 : Bilan énergétique ────────────────────────────────────────
 
-    def _add_energy_balance(self, story: list) -> None:
+    def _add_energy_balance(self, story: list, sec: int = 5) -> None:
         r = self.report
         appliances = getattr(r, "appliances", [])
         if not appliances:
             return
 
-        story.append(_section_header("5. Bilan énergétique"))
-        story.append(_subsection_header("5.1  Tableau des consommations"))
+        story.append(_section_header(f"{sec}. Bilan énergétique"))
+        story.append(_subsection_header(f"{sec}.1  Tableau des consommations"))
 
         col_w = [CONTENT_W * 0.26, CONTENT_W * 0.07, CONTENT_W * 0.09,
                  CONTENT_W * 0.09, CONTENT_W * 0.09, CONTENT_W * 0.08,
@@ -782,57 +795,344 @@ class ReportGenerator:
                 warn_style,
             ))
 
-    # ── Section 6 : Équipements ───────────────────────────────────────────────
+        # ── 5.2 Tableau P / Q / S / cos φ ────────────────────────────────────
+        story.append(_subsection_header(f"{sec}.2  Puissances actives, réactives et apparentes"))
+        import math as _math
+        pqs_rows = [["Appareil", "P (kW)", "Q (kVAR)", "S (kVA)", "cos φ"]]
+        total_p = total_q = total_s = 0.0
+        for a in appliances:
+            qty  = a.get("qty", 1) or 1
+            pw   = (a.get("power", 0) or 0) * qty
+            cp   = a.get("cos_phi", 1.0) or 1.0
+            p_kw = pw / 1000
+            s_kva = p_kw / cp if cp > 0 else p_kw
+            phi  = _math.acos(max(0.01, min(1.0, cp)))
+            q_kvar = s_kva * _math.sin(phi)
+            total_p += p_kw; total_q += q_kvar; total_s += s_kva
+            pqs_rows.append([
+                a.get("name", "—"),
+                f"{p_kw:.3f}", f"{q_kvar:.3f}", f"{s_kva:.3f}", f"{cp:.2f}",
+            ])
+        pqs_rows.append(["Total site",
+                         f"{total_p:.3f}", f"{total_q:.3f}", f"{total_s:.3f}",
+                         f"{(total_p / total_s):.2f}" if total_s > 0 else "1.00"])
+        col_p = [CONTENT_W * 0.38, CONTENT_W * 0.155, CONTENT_W * 0.155,
+                 CONTENT_W * 0.155, CONTENT_W * 0.155]
+        pqs_t = Table(pqs_rows, colWidths=col_p)
+        n_pqs = len(pqs_rows)
+        pqs_cmds = [
+            ("FONTNAME",      (0,  0), (-1,  0),  "Helvetica-Bold"),
+            ("FONTNAME",      (0,  1), (-1, -2),  "Helvetica"),
+            ("FONTNAME",      (0, -1), (-1, -1),  "Helvetica-Bold"),
+            ("FONTSIZE",      (0,  0), (-1, -1),  8),
+            ("TEXTCOLOR",     (0,  0), (-1,  0),  C_WHITE),
+            ("BACKGROUND",    (0,  0), (-1,  0),  _THEME["secondary"]),
+            ("BACKGROUND",    (0, -1), (-1, -1),  HexColor("#EDE9FE")),
+            ("TEXTCOLOR",     (3,  1), (3, -1),   HexColor("#7C3AED")),  # S col
+            ("ALIGN",         (1,  0), (-1, -1),  "RIGHT"),
+            ("ALIGN",         (0,  0), (0,  -1),  "LEFT"),
+            ("GRID",          (0,  0), (-1, -1),  0.4, C_BORDER),
+            ("TOPPADDING",    (0,  0), (-1, -1),  3),
+            ("BOTTOMPADDING", (0,  0), (-1, -1),  3),
+            ("LEFTPADDING",   (0,  0), (-1, -1),  5),
+            ("RIGHTPADDING",  (0,  0), (-1, -1),  5),
+        ]
+        for i in range(1, n_pqs - 1):
+            if i % 2 == 0:
+                pqs_cmds.append(("BACKGROUND", (0, i), (-1, i), C_ROW_ALT))
+        pqs_t.setStyle(TableStyle(pqs_cmds))
+        pqs_t.spaceAfter = 4 * mm
+        story.append(pqs_t)
 
-    def _add_equipment(self, story: list) -> None:
+        # KPI badges P / Q / S
+        kpi_pqs = [
+            (f"{total_p:.2f} kW",   "Puissance active totale",    "#0EA5E9"),
+            (f"{total_q:.2f} kVAR", "Puissance réactive totale",  "#F59E0B"),
+            (f"{total_s:.2f} kVA",  "Puissance apparente totale", "#7C3AED"),
+            (f"{total_p/total_s:.2f}" if total_s > 0 else "1.00",
+                                     "Facteur de puissance moyen", "#22C55E"),
+        ]
+        story.append(_kpi_table(kpi_pqs))
+
+        # ── 5.3 Courbe de charge journalière ─────────────────────────────────
+        story.append(_subsection_header(f"{sec}.3  Profil de charge journalier (0h-24h)"))
+        load_chart = build_load_profile_chart(appliances)
+        story.append(KeepTogether([load_chart, Spacer(1, 3 * mm)]))
+
+        # ── 5.4 Histogramme consommation mensuelle ────────────────────────────
+        story.append(_subsection_header(f"{sec}.4  Comparaison mensuelle Production / Consommation"))
+        sim_obj = getattr(r, "simulation", None)
+        monthly_prod = getattr(sim_obj, "monthly_production_kwh", []) if sim_obj else []
+        monthly_cons = [(total_kwh * 365 / 12)] * 12
+        cmp_chart = build_monthly_comparison_chart(monthly_prod, monthly_cons)
+        story.append(KeepTogether([cmp_chart, Spacer(1, 3 * mm)]))
+
+        # ── 5.5 Répartition par usage ─────────────────────────────────────────
+        story.append(_subsection_header(f"{sec}.5  Répartition de la consommation par usage"))
+        usage_chart = build_usage_category_chart(appliances)
+        story.append(KeepTogether([usage_chart, Spacer(1, 3 * mm)]))
+
+    # ── Section SENELEC ────────────────────────────────────────────────────────
+
+    def _add_senelec_analysis(self, story: list, sec: int = 6) -> None:
+        r = self.report
+        sa = getattr(r, "senelec_analysis", None)
+        if not sa:
+            return
+
+        story.append(PageBreak())
+        story.append(_section_header(f"{sec}. Analyse tarifaire SENELEC & économies"))
+
+        tariff = sa.get("tariff_code", "DPP")
+        annual_saving = sa.get("annual_saving_xof", 0)
+        monthly = sa.get("monthly", [])
+
+        # KPIs principaux
+        if monthly:
+            avg_before = sum(m["before_xof"] for m in monthly) / 12
+            avg_after  = sum(m["after_xof"]  for m in monthly) / 12
+            avg_cov    = sum(m["coverage_pct"] for m in monthly) / 12
+            kpi_s = [
+                (_fmt(avg_before),   "Facture moy. avant (FCFA/mois)", "#EF4444"),
+                (_fmt(avg_after),    "Facture moy. après (FCFA/mois)", "#0EA5E9"),
+                (_fmt(annual_saving),"Économie annuelle (FCFA/an)",    "#22C55E"),
+                (f"{avg_cov:.0f} %", "Taux couverture moyen",          "#F59E0B"),
+            ]
+            story.append(_kpi_table(kpi_s))
+
+        # ── 6.1 Grille tarifaire identifiée ──────────────────────────────────
+        story.append(_subsection_header(
+            f"{sec}.1  Catégorie tarifaire : {tariff.replace('_WOYOFAL', ' (Woyofal)')}"
+        ))
+        from solarintel.config.senelec import (
+            SENELEC_TRANCHES, SENELEC_WOYOFAL,
+            TRANCHE_1_MAX, TRANCHE_2_MAX,
+        )
+        is_woy = "WOYOFAL" in tariff
+        code   = tariff.replace("_WOYOFAL", "")
+        src    = SENELEC_WOYOFAL if is_woy else SENELEC_TRANCHES
+        key    = f"{code}_WOYOFAL" if is_woy else code
+        t1, t2, t3 = src.get(key, SENELEC_TRANCHES.get("DPP", (91.17, 136.49, 159.36)))
+        story.append(_data_table([
+            ["Tranche",                       "Plage (kWh/mois)", "Tarif (FCFA/kWh)"],
+            [f"T1 — Tranche 1",               f"0 – {TRANCHE_1_MAX}",    f"{t1:.2f}"],
+            [f"T2 — Tranche 2",               f"{TRANCHE_1_MAX+1} – {TRANCHE_2_MAX}", f"{t2:.2f}"],
+            [f"T3 — Tranche 3{'*' if is_woy else ''}", f"> {TRANCHE_2_MAX}",  f"{t3:.2f}"],
+        ], col_widths=[CONTENT_W * 0.45, CONTENT_W * 0.30, CONTENT_W * 0.25]))
+
+        # ── 6.2 Tableau mensuel avant / après ────────────────────────────────
+        story.append(_subsection_header(f"{sec}.2  Facturation mensuelle AVANT / APRÈS solaire"))
+        tbl_rows = [["Mois", "Conso.\n(kWh)", "Prod.\n(kWh)", "Net\n(kWh)",
+                     "Facture avant\n(FCFA)", "Facture après\n(FCFA)",
+                     "Économie\n(FCFA)", "Couv.\n(%)"]]
+        for m in monthly:
+            tbl_rows.append([
+                m["month"],
+                f"{m['cons_kwh']:.0f}",
+                f"{m['prod_kwh']:.0f}",
+                f"{m['net_kwh']:.0f}",
+                _fmt(m["before_xof"]),
+                _fmt(m["after_xof"]),
+                _fmt(m["saving_xof"]),
+                f"{m['coverage_pct']:.0f}%",
+            ])
+        tot_b = sum(m["before_xof"] for m in monthly)
+        tot_a = sum(m["after_xof"]  for m in monthly)
+        tbl_rows.append(["TOTAL", "", "", "",
+                         _fmt(tot_b), _fmt(tot_a), _fmt(tot_b - tot_a), ""])
+
+        col_s = [CONTENT_W * 0.08, CONTENT_W * 0.09, CONTENT_W * 0.09, CONTENT_W * 0.09,
+                 CONTENT_W * 0.165, CONTENT_W * 0.155, CONTENT_W * 0.155, CONTENT_W * 0.075]
+        t = Table(tbl_rows, colWidths=col_s)
+        n = len(tbl_rows)
+        cmds = [
+            ("FONTNAME",      (0,  0), (-1,  0),  "Helvetica-Bold"),
+            ("FONTNAME",      (0,  1), (-1, -2),  "Helvetica"),
+            ("FONTNAME",      (0, -1), (-1, -1),  "Helvetica-Bold"),
+            ("FONTSIZE",      (0,  0), (-1, -1),  7),
+            ("TEXTCOLOR",     (0,  0), (-1,  0),  C_WHITE),
+            ("BACKGROUND",    (0,  0), (-1,  0),  _THEME["secondary"]),
+            ("BACKGROUND",    (0, -1), (-1, -1),  HexColor("#DCFCE7")),
+            ("TEXTCOLOR",     (6,  1), (6, -1),   C_GREEN),
+            ("ALIGN",         (1,  0), (-1, -1),  "RIGHT"),
+            ("ALIGN",         (0,  0), (0,  -1),  "LEFT"),
+            ("GRID",          (0,  0), (-1, -1),  0.4, C_BORDER),
+            ("TOPPADDING",    (0,  0), (-1, -1),  2),
+            ("BOTTOMPADDING", (0,  0), (-1, -1),  2),
+            ("LEFTPADDING",   (0,  0), (-1, -1),  4),
+            ("RIGHTPADDING",  (0,  0), (-1, -1),  4),
+        ]
+        for i in range(1, n - 1):
+            if i % 2 == 0:
+                cmds.append(("BACKGROUND", (0, i), (-1, i), C_ROW_ALT))
+        t.setStyle(TableStyle(cmds))
+        t.spaceAfter = 4 * mm
+        story.append(t)
+
+        # ── 6.3 Graphique factures ────────────────────────────────────────────
+        story.append(_subsection_header(f"{sec}.3  Factures mensuelles et économies"))
+        bill_chart = build_senelec_billing_chart(
+            sa.get("bill_before", []), sa.get("bill_after", [])
+        )
+        story.append(KeepTogether([bill_chart, Spacer(1, 3 * mm)]))
+
+        # ── 6.4 Taux de couverture mensuel ────────────────────────────────────
+        story.append(_subsection_header(f"{sec}.4  Taux de couverture mensuel (%)"))
+        cov_rows = [["Mois"] + [m["month"] for m in monthly]]
+        cov_rows.append(["Taux"] + [f"{m['coverage_pct']:.0f}%" for m in monthly])
+        col_c = [CONTENT_W * 0.12] + [CONTENT_W * 0.073] * 12
+        cov_t = Table(cov_rows, colWidths=col_c)
+        cov_cmds = [
+            ("FONTNAME",   (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("FONTNAME",   (0, 1), (-1, 1), "Helvetica-Bold"),
+            ("FONTSIZE",   (0, 0), (-1, 1), 8),
+            ("TEXTCOLOR",  (0, 0), (-1, 0), C_WHITE),
+            ("BACKGROUND", (0, 0), (-1, 0), _THEME["secondary"]),
+            ("ALIGN",      (0, 0), (-1, 1), "CENTER"),
+            ("GRID",       (0, 0), (-1, 1), 0.4, C_BORDER),
+            ("TOPPADDING",    (0, 0), (-1, 1), 4),
+            ("BOTTOMPADDING", (0, 0), (-1, 1), 4),
+        ]
+        for i, m in enumerate(monthly, start=1):
+            cov = m["coverage_pct"]
+            color = (C_GREEN if cov >= 80 else
+                     HexColor("#F59E0B") if cov >= 50 else C_RED)
+            cov_cmds.append(("TEXTCOLOR", (i, 1), (i, 1), color))
+        cov_t.setStyle(TableStyle(cov_cmds))
+        cov_t.spaceAfter = 4 * mm
+        story.append(cov_t)
+
+    # ── Section Calepinage ────────────────────────────────────────────────────
+
+    def _add_calepinage(self, story: list, sec: int = 7) -> None:
+        r = self.report
+        cal = getattr(r, "calepinage", None)
+        if not cal:
+            return
+
+        story.append(PageBreak())
+        story.append(_section_header(f"{sec}. Calepinage & plan d'implantation"))
+
+        # ── Capture satellite ─────────────────────────────────────────────────
+        map_img_path = cal.get("map_img_path") if cal else None
+        if not map_img_path and cal:
+            map_img_path = cal.get("map_img_path")
+
+        if map_img_path:
+            story.append(_subsection_header(f"{sec}.0  Vue satellite — panneaux positionnés"))
+            try:
+                img = Image(map_img_path, width=CONTENT_W, height=CONTENT_W * 0.55,
+                            kind="proportional")
+                img.hAlign = "CENTER"
+                story.append(img)
+                body_cap = ParagraphStyle(
+                    "cap", fontName="Helvetica", fontSize=8,
+                    textColor=C_TEXT_SEC, alignment=1, spaceAfter=4 * mm,
+                )
+                story.append(Paragraph(
+                    f"Capture ArcGIS — {cal.get('panel_count', '?')} panneaux "
+                    f"sur {cal.get('polygon_area_m2', '?')} m²  "
+                    f"· {cal.get('latitude', 0):.5f}°N, {cal.get('longitude', 0):.5f}°E",
+                    body_cap,
+                ))
+            except Exception:
+                pass  # image invalide → on saute silencieusement
+
+        story.append(_subsection_header(f"{sec}.1  Surfaces et disposition"))
+        story.append(_data_table([
+            ["Paramètre",                    "Valeur"],
+            ["Surface totale zone tracée",   f"{cal.get('polygon_area_m2', 0):.1f} m²"],
+            ["Surface nette panneaux",       f"{cal.get('used_area_m2', 0):.1f} m²"],
+            ["Surface libre / obstacles",    f"{cal.get('free_area_m2', 0):.1f} m²"],
+            ["Taux d'occupation",            f"{cal.get('coverage_pct', 0):.1f} %"],
+        ]))
+
+        story.append(_subsection_header(f"{sec}.2  Disposition des panneaux"))
+        story.append(_data_table([
+            ["Paramètre",                   "Valeur"],
+            ["Nombre de panneaux",          f"{cal.get('panel_count', 0)}"],
+            ["Dimensions panneau (L×H)",    cal.get("panel_dims", "—")],
+            ["Orientation",                 cal.get("orientation", "Portrait")],
+            ["Espacement horizontal",       f"{cal.get('spacing_h_cm', 2):.0f} cm"],
+            ["Espacement vertical",         f"{cal.get('spacing_v_cm', 5):.0f} cm"],
+            ["Rangées estimées",            f"{cal.get('est_rows', '—')}"],
+            ["Panneaux / rangée",           f"{cal.get('est_cols', '—')}"],
+        ]))
+
+        story.append(_subsection_header(f"{sec}.3  Orientation & anti-ombrage"))
+        story.append(_data_table([
+            ["Paramètre",                      "Valeur"],
+            ["Inclinaison (tilt)",              f"{cal.get('tilt_deg', 15):.1f}°"],
+            ["Azimut toiture",                  f"{cal.get('azimuth_deg', 180):.0f}°  (180° = Plein sud)"],
+            ["Espacement inter-rangées (min.)", f"{cal.get('row_spacing_m', 0):.2f} m  (anti-ombrage solstice hiver)"],
+        ]))
+
+        story.append(_subsection_header(f"{sec}.4  Localisation GPS"))
+        story.append(_data_table([
+            ["Coordonnée", "Valeur"],
+            ["Latitude",   f"{cal.get('latitude', 0):.6f}°"],
+            ["Longitude",  f"{cal.get('longitude', 0):.6f}°"],
+        ]))
+
+        body_sm = ParagraphStyle("bsm_cal", fontName="Helvetica", fontSize=8,
+                                 textColor=C_TEXT_SEC, spaceAfter=2 * mm)
+        story.append(Paragraph(
+            "ℹ L'espacement inter-rangées est calculé pour garantir l'absence d'ombrage "
+            "mutuel au solstice d'hiver (élévation solaire minimale 25°). "
+            "La capture satellite du site est disponible via la vue carte de l'application.",
+            body_sm,
+        ))
+
+    # ── Section Équipements ───────────────────────────────────────────────────
+
+    def _add_equipment(self, story: list, sec: int = 6) -> None:
         r = self.report
         equip = getattr(r, "equipment", None)
         if not equip:
             return
 
-        story.append(_section_header("6. Équipements du système"))
+        story.append(_section_header(f"{sec}. Équipements du système"))
 
         inv  = equip.get("inverter", {})
         bat  = equip.get("battery",  {})
         capex = equip.get("capex",   {})
 
         if inv:
-            story.append(_subsection_header("6.1  Onduleur"))
+            story.append(_subsection_header(f"{sec}.1  Onduleur"))
             inv_rows = [["Paramètre", "Valeur"]]
             for k, v in inv.items():
                 inv_rows.append([k, str(v)])
             story.append(_data_table(inv_rows))
 
         if bat:
-            story.append(_subsection_header("6.2  Stockage batterie"))
+            story.append(_subsection_header(f"{sec}.2  Stockage batterie"))
             bat_rows = [["Paramètre", "Valeur"]]
             for k, v in bat.items():
                 bat_rows.append([k, str(v)])
             story.append(_data_table(bat_rows))
 
         if capex:
-            story.append(_subsection_header("6.3  Détail CAPEX"))
+            story.append(_subsection_header(f"{sec}.3  Détail CAPEX"))
             capex_rows = [["Poste", "Montant (XOF)"]]
             for k, v in capex.items():
                 capex_rows.append([k, _fmt(float(v))])
             story.append(_data_table(capex_rows))
 
-    # ── Section 7 : QA ────────────────────────────────────────────────────────
+    # ── Section QA ────────────────────────────────────────────────────────────
 
-    def _add_qa(self, story: list) -> None:
+    def _add_qa(self, story: list, sec: int = 7) -> None:
         qa = self.report.qa
-        n_section = 7 if getattr(self.report, "appliances", None) else 6
-        story.append(_section_header(f"{n_section}. Rapport Qualité & Validation"))
+        story.append(_section_header(f"{sec}. Rapport Qualité & Validation"))
 
         if qa.validations:
-            story.append(_subsection_header(f"{n_section}.1  Matrice de validation"))
+            story.append(_subsection_header(f"{sec}.1  Matrice de validation"))
             story.append(self._build_qa_table(
                 [["Code", "Critère", "Statut", "Détail"]] +
                 [[v.code, v.label, v.status, v.detail] for v in qa.validations]
             ))
 
         if qa.edge_cases:
-            story.append(_subsection_header(f"{n_section}.2  Cas limites"))
+            story.append(_subsection_header(f"{sec}.2  Cas limites"))
             story.append(self._build_qa_table(
                 [["Code", "Critère", "Statut", "Détail"]] +
                 [[e.code, e.label, e.status, e.detail] for e in qa.edge_cases]
@@ -852,10 +1152,9 @@ class ReportGenerator:
 
     # ── Section Annexes ───────────────────────────────────────────────────────
 
-    def _add_appendix(self, story: list) -> None:
+    def _add_appendix(self, story: list, sec: int = 8) -> None:
         story.append(PageBreak())
-        n_section = 8 if getattr(self.report, "appliances", None) else 7
-        story.append(_section_header(f"{n_section}. Annexes"))
+        story.append(_section_header(f"{sec}. Annexes"))
 
         body_sm = ParagraphStyle("bsm3", fontName="Helvetica", fontSize=8,
                                  textColor=C_TEXT_SEC, spaceAfter=1 * mm, leading=11)
