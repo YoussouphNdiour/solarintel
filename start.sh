@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ──────────────────────────────────────────────────────────────
 # SolarIntel — Launcher
-# Starts FastAPI backend + serves index.html + opens browser
+# Starts FastAPI backend + serves index.html + opens browsers
 # ──────────────────────────────────────────────────────────────
 
 set -e
