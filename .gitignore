@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+env/
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# IDE
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Logs
+*.log
+
+# solarintel-3d — exclude build artifacts and dependencies
+solarintel-3d/node_modules/
+solarintel-3d/dist/
+solarintel-3d/.vite/
+
+# Test / coverage
+.pytest_cache/
+htmlcov/
+.coverage

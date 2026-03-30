@@ -1,0 +1,7 @@
+services:
+  - type: web
+    name: solarintel-3d
+    env: static
+    buildCommand: npm install && npm run build
+    staticPublishPath: dist
+    envVars: []
