@@ -1067,34 +1067,276 @@
 // =========================================================================
 const PANEL_CATALOG = {
     "JA Solar": [
-        { model: "JAM72S30-545/MR",  power: 545, width: 1134, height: 2278, efficiency: 21.1, tempCoeff: -0.350 },
-        { model: "JAM60S20-385/MR",  power: 385, width: 1002, height: 1996, efficiency: 19.2, tempCoeff: -0.350 },
-        { model: "JAM78S30-600/MR",  power: 600, width: 1134, height: 2465, efficiency: 21.5, tempCoeff: -0.340 },
-        { model: "JAM72D42-595/LB",  power: 595, width: 1134, height: 2382, efficiency: 22.1, tempCoeff: -0.290 },
-        { model: "JAM72D42-610/LB",  power: 610, width: 1134, height: 2382, efficiency: 22.7, tempCoeff: -0.290 },
-        { model: "JAM90D42-710/LB",  power: 710, width: 1303, height: 2384, efficiency: 22.8, tempCoeff: -0.290 },
-        { model: "JAM90D42-720/LB",  power: 720, width: 1303, height: 2384, efficiency: 23.1, tempCoeff: -0.290 },
+        {
+            model: "JAM72S30-545/MR",
+            power: 545,
+            width: 1134,
+            height: 2278,
+            efficiency: 21.1,
+            tempCoeff: -0.350,
+            vmp: 41.80,
+            imp: 13.04,
+            voc: 49.75,
+            isc: 13.93,
+            maxSeriesFuse: 25
+        },
+        {
+            model: "JAM60S20-385/MR",
+            power: 385,
+            width: 1002,
+            height: 1996,
+            efficiency: 19.2,
+            tempCoeff: -0.350,
+            vmp: 37.20,
+            imp: 10.35,
+            voc: 44.60,
+            isc: 11.00,
+            maxSeriesFuse: 20
+        },
+        {
+            model: "JAM78S30-600/MR",
+            power: 600,
+            width: 1134,
+            height: 2465,
+            efficiency: 21.5,
+            tempCoeff: -0.340,
+            vmp: 42.50,
+            imp: 14.10,
+            voc: 50.80,
+            isc: 14.80,
+            maxSeriesFuse: 25
+        },
+        {
+            model: "JAM72D42-595/LB",
+            power: 595,
+            width: 1134,
+            height: 2382,
+            efficiency: 22.1,
+            tempCoeff: -0.290,
+            vmp: 43.10,
+            imp: 13.80,
+            voc: 51.50,
+            isc: 14.20,
+            maxSeriesFuse: 25
+        },
+        {
+            model: "JAM72D42-610/LB",
+            power: 610,
+            width: 1134,
+            height: 2382,
+            efficiency: 22.7,
+            tempCoeff: -0.290,
+            vmp: 43.50,
+            imp: 14.00,
+            voc: 52.00,
+            isc: 14.50,
+            maxSeriesFuse: 25
+        },
+        {
+            model: "JAM90D42-710/LB",
+            power: 710,
+            width: 1303,
+            height: 2384,
+            efficiency: 22.8,
+            tempCoeff: -0.290,
+            vmp: 44.00,
+            imp: 16.10,
+            voc: 52.80,
+            isc: 17.00,
+            maxSeriesFuse: 25
+        },
+        {
+            model: "JAM90D42-720/LB",
+            power: 720,
+            width: 1303,
+            height: 2384,
+            efficiency: 23.1,
+            tempCoeff: -0.290,
+            vmp: 44.20,
+            imp: 16.30,
+            voc: 53.00,
+            isc: 17.20,
+            maxSeriesFuse: 25
+        },
     ],
     "Canadian Solar": [
-        { model: "CS6W-545MS", power: 545, width: 1134, height: 2266, efficiency: 21.2, tempCoeff: -0.340 },
-        { model: "CS3W-440MS", power: 440, width: 1048, height: 2108, efficiency: 19.9, tempCoeff: -0.340 },
-        { model: "CS7L-600MS", power: 600, width: 1134, height: 2384, efficiency: 22.2, tempCoeff: -0.340 },
+        {
+            model: "CS6W-545MS",
+            power: 545,
+            width: 1134,
+            height: 2266,
+            efficiency: 21.2,
+            tempCoeff: -0.340,
+            vmp: 41.50,
+            imp: 13.15,
+            voc: 49.20,
+            isc: 13.90,
+            maxSeriesFuse: 25
+        },
+        {
+            model: "CS3W-440MS",
+            power: 440,
+            width: 1048,
+            height: 2108,
+            efficiency: 19.9,
+            tempCoeff: -0.340,
+            vmp: 39.20,
+            imp: 11.20,
+            voc: 46.50,
+            isc: 11.90,
+            maxSeriesFuse: 20
+        },
+        {
+            model: "CS7L-600MS",
+            power: 600,
+            width: 1134,
+            height: 2384,
+            efficiency: 22.2,
+            tempCoeff: -0.340,
+            vmp: 42.00,
+            imp: 14.30,
+            voc: 50.50,
+            isc: 15.00,
+            maxSeriesFuse: 25
+        },
     ],
     "Longi": [
-        { model: "LR5-72HPH-545M", power: 545, width: 1134, height: 2256, efficiency: 21.3, tempCoeff: -0.340 },
-        { model: "LR5-66HPH-500M", power: 500, width: 1134, height: 2094, efficiency: 20.7, tempCoeff: -0.350 },
-        { model: "LR7-72HGD-620M", power: 620, width: 1134, height: 2384, efficiency: 23.0, tempCoeff: -0.330 },
+        {
+            model: "LR5-72HPH-545M",
+            power: 545,
+            width: 1134,
+            height: 2256,
+            efficiency: 21.3,
+            tempCoeff: -0.340,
+            vmp: 41.20,
+            imp: 13.20,
+            voc: 49.00,
+            isc: 14.00,
+            maxSeriesFuse: 25
+        },
+        {
+            model: "LR5-66HPH-500M",
+            power: 500,
+            width: 1134,
+            height: 2094,
+            efficiency: 20.7,
+            tempCoeff: -0.350,
+            vmp: 39.50,
+            imp: 12.65,
+            voc: 47.20,
+            isc: 13.30,
+            maxSeriesFuse: 20
+        },
+        {
+            model: "LR7-72HGD-620M",
+            power: 620,
+            width: 1134,
+            height: 2384,
+            efficiency: 23.0,
+            tempCoeff: -0.330,
+            v memes:
+            vmp: 44.55,
+            imp: 13.92,
+            voc: 52.66,
+            isc: 14.81,
+            maxSeriesFuse: 25
+        },
     ],
     "Trina Solar": [
-        { model: "TSM-545DEG19C.20", power: 545, width: 1134, height: 2278, efficiency: 21.1, tempCoeff: -0.340 },
-        { model: "TSM-400DEG15M.20", power: 400, width: 1048, height: 2015, efficiency: 19.0, tempCoeff: -0.350 },
-        { model: "TSM-600DEG21C.20", power: 600, width: 1134, height: 2384, efficiency: 22.0, tempCoeff: -0.330 },
-        { model: "TSM-595NEG19RC.20",power: 595, width: 1134, height: 2382, efficiency: 22.1, tempCoeff: -0.290 },
-        { model: "TSM-615NEG19RC.20",power: 615, width: 1134, height: 2382, efficiency: 22.8, tempCoeff: -0.290 },
-        { model: "TSM-700NEG21C.20", power: 700, width: 1303, height: 2384, efficiency: 22.5, tempCoeff: -0.290 },
-        { model: "TSM-710NEG21C.20", power: 710, width: 1303, height: 2384, efficiency: 22.8, tempCoeff: -0.290 },
+        {
+            model: "TSM-545DEG19C.20",
+            power: 545,
+            width: 1134,
+            height: 2278,
+            efficiency: 21.1,
+            tempCoeff: -0.340,
+            vmp: 41.00,
+            imp: 13.30,
+            voc: 49.20,
+            isc: 14.00,
+            maxSeriesFuse: 25
+        },
+        {
+            model: "TSM-400DEG15M.20",
+            power: 400,
+            width: 1048,
+            height: 2015,
+            efficiency: 19.0,
+            tempCoeff: -0.350,
+            vmp: 37.50,
+            imp: 10.65,
+            voc: 45.00,
+            isc: 11.30,
+            maxSeriesFuse: 20
+        },
+        {
+            model: "TSM-600DEG21C.20",
+            power: 600,
+            width: 1134,
+            height: 2384,
+            efficiency: 22.0,
+            tempCoeff: -0.330,
+            vmp: 42.20,
+            imp: 14.20,
+            voc: 50.80,
+            isc: 15.00,
+            maxSeriesFuse: 25
+        },
+        {
+            model: "TSM-595NEG19RC.20",
+            power: 595,
+            width: 1134,
+            height: 2382,
+            efficiency: 22.1,
+            tempCoeff: -0.290,
+            vmp: 42.80,
+            imp: 13.90,
+            voc: 51.20,
+            isc: 14.50,
+            maxSeriesFuse: 25
+        },
+        {
+            model: "TSM-615NEG19RC.20",
+            power: 615,
+            width: 1134,
+            height: 2382,
+            efficiency: 22.8,
+            tempCoeff: -0.290,
+            vmp: 43.20,
+            imp: 14.20,
+            voc: 51.80,
+            isc: 14.80,
+            maxSeriesFuse: 25
+        },
+        {
+            model: "TSM-700NEG21C.20",
+            power: 700,
+            width: 1303,
+            height: 2384,
+            efficiency: 22.5,
+            tempCoeff: -0.290,
+            vmp: 44.00,
+            imp: 15.90,
+            voc: 52.60,
+            isc: 16.80,
+            maxSeriesFuse: 25
+        },
+        {
+            model: "TSM-710NEG21C.20",
+            power: 710,
+            width: 1303,
+            height: 2384,
+            efficiency: 22.8,
+            tempCoeff: -0.290,
+            vmp: 44.20,
+            imp: 16.05,
+            voc: 52.80,
+            isc: 17.00,
+            maxSeriesFuse: 25
+        },
     ],
 };
+
 
 // =========================================================================
 // INVERTER CATALOG (GOODWE / GROWATT / DEYE)
@@ -1124,7 +1366,6 @@ const INVERTER_CATALOG = {
         { model: "SUN-50K-SG01LP3", power_kw: 50.0, power_kva: 50.0, phase: "Triphasé",  type: "Hybride", defaultPrice: 2350000 },
     ],
 };
-
 // =========================================================================
 // BATTERY CATALOG (UHOME)
 // =========================================================================
@@ -2234,28 +2475,30 @@ function generateCalpinage() {
 // =========================================================================
 
 // URL of the deployed solarintel-3d app (update after Render.com deploy)
-const VIEW3D_URL = 'https://solarintel-3d.onrender.com';
+// 3D viewer is served by FastAPI at /3d/ (same origin — no CORS)
+const VIEW3D_URL = '/3d/';
 let _view3dReady = false;
 
 function switchViewTab(tab) {
-    const mapContainer  = document.getElementById('mapContainer');
+    const mapContainer    = document.getElementById('mapContainer');
     const view3dContainer = document.getElementById('view3dContainer');
-    const tabMap  = document.getElementById('tabMap2D');
-    const tab3D   = document.getElementById('tabView3D');
+    const tabMap = document.getElementById('tabMap2D');
+    const tab3D  = document.getElementById('tabView3D');
 
     if (tab === 'map') {
         mapContainer.classList.remove('hidden');
-        mapContainer.style.display = 'flex';
+        mapContainer.style.display = '';         // restore natural block layout
         view3dContainer.classList.add('hidden');
+        view3dContainer.style.display = 'none';
         tabMap.classList.add('active');
         tab3D.classList.remove('active');
-        // Invalidate ArcGIS map size
-        if (window.mapView) setTimeout(() => window.mapView.resize(), 100);
+        // Invalidate ArcGIS map size after layout reflows
+        if (window.mapView) setTimeout(() => window.mapView.resize(), 150);
     } else {
         mapContainer.classList.add('hidden');
         mapContainer.style.display = 'none';
         view3dContainer.classList.remove('hidden');
-        view3dContainer.style.display = 'flex';
+        view3dContainer.style.display = '';      // flex-1 handles sizing
         tabMap.classList.remove('active');
         tab3D.classList.add('active');
         _init3DView();
@@ -2266,17 +2509,19 @@ function _init3DView() {
     const frame = document.getElementById('view3dFrame');
     const placeholder = document.getElementById('view3dPlaceholder');
 
-    // Load iframe if not yet loaded
-    if (!frame.src || frame.src === 'about:blank' || frame.src === '') {
+    // Load iframe on first open
+    if (!frame.src || frame.src === window.location.href) {
         frame.src = VIEW3D_URL;
     }
 
-    // Show placeholder if no polygon yet
     if (!_state.polygon) {
         placeholder.style.display = 'flex';
     } else {
         placeholder.style.display = 'none';
-        _send3DInit();
+        // Retry until iframe is ready (may still be loading)
+        if (_view3dReady) {
+            _send3DInit();
+        }
     }
 }
 
@@ -2287,12 +2532,18 @@ function _send3DInit() {
     const polygon = _state.polygon;
     if (!polygon) return;
 
+    // Extract first ring from ArcGIS polygon (array of [lon, lat] pairs)
+    const rings = polygon.rings || [];
+    const firstRing = Array.isArray(rings[0]) ? rings[0] : rings;
+
+    const centroid = _state.centroid || {};
+
     frame.contentWindow.postMessage({
         type: 'INIT',
-        polygon: polygon.rings[0] || polygon.rings,
+        polygon: firstRing,
         panelCount: _state.panelCount || 0,
-        lat: _state.latitude || 14.716,
-        lon: _state.longitude || -17.467,
+        lat: centroid.latitude  || 14.716,
+        lon: centroid.longitude || -17.467,
         annualConsumption: _state.annualConsumption || 0,
         installType: _state.installType || 'autoconsommation',
     }, '*');

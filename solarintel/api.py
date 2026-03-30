@@ -67,6 +67,11 @@ _assets_dir = _ROOT / "assets"
 if _assets_dir.is_dir():
     app.mount("/assets", StaticFiles(directory=str(_assets_dir)), name="assets")
 
+# Serve the 3D viewer (solarintel-3d/dist) under /3d/
+_viewer3d_dir = _ROOT / "solarintel-3d" / "dist"
+if _viewer3d_dir.is_dir():
+    app.mount("/3d", StaticFiles(directory=str(_viewer3d_dir), html=True), name="viewer3d")
+
 
 @app.get("/favicon.ico", include_in_schema=False)
 def favicon() -> Response:
@@ -118,8 +123,10 @@ class SimulateResponse(BaseModel):
 # ---------------------------------------------------------------------------
 @lru_cache(maxsize=32)
 def _fetch_tmy(lat: float, lon: float):
-    """Fetch PVGIS TMY data with caching."""
-    tmy_data, _, _, _ = get_pvgis_tmy(
+    """Fetch PVGIS TMY data with caching.
+    Handles both old pvlib (4-tuple) and new pvlib (2-tuple or direct DataFrame).
+    """
+    result = get_pvgis_tmy(
         latitude=lat,
         longitude=lon,
         outputformat="json",
@@ -127,7 +134,11 @@ def _fetch_tmy(lat: float, lon: float):
         startyear=2005,
         endyear=2020,
     )
-    return tmy_data
+    # pvlib < 0.11 returns (data, months_selected, inputs, metadata)
+    # pvlib >= 0.11 may return (data, months_selected) or just data
+    if isinstance(result, tuple):
+        return result[0]
+    return result
 
 
 # ---------------------------------------------------------------------------
