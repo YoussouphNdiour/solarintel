@@ -26,7 +26,6 @@ build/
 
 # solarintel-3d — exclude build artifacts and dependencies
 solarintel-3d/node_modules/
-solarintel-3d/dist/
 solarintel-3d/.vite/
 
 # Test / coverage

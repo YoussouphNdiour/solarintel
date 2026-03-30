@@ -7,8 +7,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     libfreetype6-dev \
     libpng-dev \
-    nodejs \
-    npm \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -17,14 +15,7 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Build the 3D viewer — copy package files first for cache efficiency
-COPY solarintel-3d/package.json solarintel-3d/package-lock.json* ./solarintel-3d/
-RUN cd solarintel-3d && npm install --prefer-offline
-
-COPY solarintel-3d/ ./solarintel-3d/
-RUN cd solarintel-3d && npm run build
-
-# Copy remaining project sources
+# Copy all sources (solarintel-3d/dist is pre-built and committed)
 COPY . .
 
 # Expose port (Render/Cloud Run inject $PORT at runtime)
