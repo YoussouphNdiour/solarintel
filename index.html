@@ -251,6 +251,20 @@
             border: 1px solid #334155; border-radius: 0.75rem;
             padding: 0.35rem; box-shadow: 0 4px 20px rgba(0,0,0,0.45);
         }
+        /* View tab bar */
+        .view-tab {
+            display: flex; align-items: center; gap: 0.4rem;
+            padding: 0.35rem 0.75rem; border-radius: 0.4rem;
+            font-size: 0.7rem; font-weight: 500; cursor: pointer;
+            color: #64748B; background: transparent;
+            border: 1px solid transparent; transition: all 0.15s;
+        }
+        .view-tab:hover { color: #94A3B8; background: rgba(255,255,255,0.04); }
+        .view-tab.active { background: rgba(14,165,233,0.15); color: #38BDF8; border-color: rgba(14,165,233,0.3); }
+        #viewTabBar { flex-shrink: 0; }
+        #mapContainer { flex: 1; position: relative; overflow: hidden; }
+        #view3dContainer { flex: 1; overflow: hidden; }
+
         .map-tool-btn {
             display: flex; align-items: center; gap: 0.45rem;
             padding: 0.42rem 0.7rem; border-radius: 0.45rem;
@@ -918,8 +932,26 @@
             </div><!-- /scrollable-content -->
         </aside>
 
-        <!-- RIGHT PANEL: ArcGIS Map -->
-        <div class="flex-1 relative">
+        <!-- RIGHT PANEL: ArcGIS Map + 3D View -->
+        <div class="flex-1 relative flex flex-col">
+
+            <!-- View tab switcher -->
+            <div id="viewTabBar" class="flex items-center gap-1 px-3 py-2 bg-[#0F172A] border-b border-[#334155] z-10">
+                <button id="tabMap2D" onclick="switchViewTab('map')"
+                    class="view-tab active flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all">
+                    <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/></svg>
+                    Carte 2D
+                </button>
+                <button id="tabView3D" onclick="switchViewTab('3d')"
+                    class="view-tab flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all">
+                    <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>
+                    Vue 3D
+                    <span id="tab3DBadge" class="hidden text-[10px] bg-[#0EA5E9]/20 text-[#0EA5E9] px-1.5 py-0.5 rounded-full font-semibold">Prêt</span>
+                </button>
+            </div>
+
+            <!-- Map container -->
+            <div id="mapContainer" class="flex-1 relative">
             <div id="mapDiv"></div>
 
             <!-- Search bar (top-center) -->
@@ -1002,7 +1034,30 @@
                 <i data-lucide="mouse-pointer-2" class="w-3.5 h-3.5 text-solar-blue flex-shrink-0"></i>
                 <span id="drawHintText">Utilisez l'outil polygone (barre droite) pour dessiner la toiture</span>
             </div>
-        </div>
+            </div><!-- /mapContainer -->
+
+            <!-- 3D viewer iframe (hidden by default) -->
+            <div id="view3dContainer" class="flex-1 relative hidden">
+                <iframe
+                    id="view3dFrame"
+                    src=""
+                    class="w-full h-full border-0"
+                    allow="accelerometer; autoplay"
+                    title="Visualisation 3D toiture solaire"
+                ></iframe>
+                <!-- 3D not ready placeholder -->
+                <div id="view3dPlaceholder" class="absolute inset-0 flex flex-col items-center justify-center bg-[#0F172A] text-slate-400 gap-3">
+                    <svg class="w-12 h-12 text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
+                    </svg>
+                    <p class="text-sm font-medium">Vue 3D</p>
+                    <p class="text-xs text-slate-500 text-center max-w-xs">
+                        Dessinez un polygone sur la carte pour activer la visualisation 3D de votre toiture
+                    </p>
+                </div>
+            </div>
+
+        </div><!-- /right panel -->
 
     </main>
 
@@ -1164,6 +1219,15 @@ function onStateChange(prop, value) {
     if (prop === 'panelCount' || prop === 'polygon' || prop === 'annualProduction_kWh') {
         updateWorkflowSteps();
     }
+    // Notify 3D viewer on polygon or panel count change
+    if (prop === 'polygon' || prop === 'panelCount') {
+        if (_view3dReady && _state.polygon) _send3DInit();
+        if (prop === 'polygon' && value) {
+            const placeholder = document.getElementById('view3dPlaceholder');
+            if (placeholder) placeholder.style.display = 'none';
+        }
+    }
+
     if (prop === 'polygon') {
         const btn = document.getElementById('btnCalpinage');
         const hint = document.getElementById('calpinageHint');
@@ -2164,6 +2228,103 @@ function generateCalpinage() {
         hint.classList.add('text-solar-amber');
     }
 }
+
+// =========================================================================
+// 3D VIEW — tab switcher + iframe communication
+// =========================================================================
+
+// URL of the deployed solarintel-3d app (update after Render.com deploy)
+const VIEW3D_URL = 'https://solarintel-3d.onrender.com';
+let _view3dReady = false;
+
+function switchViewTab(tab) {
+    const mapContainer  = document.getElementById('mapContainer');
+    const view3dContainer = document.getElementById('view3dContainer');
+    const tabMap  = document.getElementById('tabMap2D');
+    const tab3D   = document.getElementById('tabView3D');
+
+    if (tab === 'map') {
+        mapContainer.classList.remove('hidden');
+        mapContainer.style.display = 'flex';
+        view3dContainer.classList.add('hidden');
+        tabMap.classList.add('active');
+        tab3D.classList.remove('active');
+        // Invalidate ArcGIS map size
+        if (window.mapView) setTimeout(() => window.mapView.resize(), 100);
+    } else {
+        mapContainer.classList.add('hidden');
+        mapContainer.style.display = 'none';
+        view3dContainer.classList.remove('hidden');
+        view3dContainer.style.display = 'flex';
+        tabMap.classList.remove('active');
+        tab3D.classList.add('active');
+        _init3DView();
+    }
+}
+
+function _init3DView() {
+    const frame = document.getElementById('view3dFrame');
+    const placeholder = document.getElementById('view3dPlaceholder');
+
+    // Load iframe if not yet loaded
+    if (!frame.src || frame.src === 'about:blank' || frame.src === '') {
+        frame.src = VIEW3D_URL;
+    }
+
+    // Show placeholder if no polygon yet
+    if (!_state.polygon) {
+        placeholder.style.display = 'flex';
+    } else {
+        placeholder.style.display = 'none';
+        _send3DInit();
+    }
+}
+
+function _send3DInit() {
+    const frame = document.getElementById('view3dFrame');
+    if (!frame || !frame.contentWindow) return;
+
+    const polygon = _state.polygon;
+    if (!polygon) return;
+
+    frame.contentWindow.postMessage({
+        type: 'INIT',
+        polygon: polygon.rings[0] || polygon.rings,
+        panelCount: _state.panelCount || 0,
+        lat: _state.latitude || 14.716,
+        lon: _state.longitude || -17.467,
+        annualConsumption: _state.annualConsumption || 0,
+        installType: _state.installType || 'autoconsommation',
+    }, '*');
+}
+
+// Listen for messages back from the 3D viewer
+window.addEventListener('message', function(e) {
+    if (!e.data || typeof e.data !== 'object') return;
+
+    if (e.data.type === 'READY') {
+        _view3dReady = true;
+        // Enable the 3D badge
+        const badge = document.getElementById('tab3DBadge');
+        if (badge) badge.classList.remove('hidden');
+        if (_state.polygon) _send3DInit();
+    }
+
+    // Sync tilt/azimuth from 3D view back to simulation params
+    if (e.data.type === 'TILT_AZIMUTH') {
+        // Could store these and use in next simulation run
+        // For now just log
+        console.log('[3D→2D] tilt:', e.data.tilt, 'azimuth:', e.data.azimuth);
+    }
+});
+
+// When panel count changes (after calpinage), update 3D view
+const _orig3DPanelUpdate = function() {};
+(function() {
+    const origOnStateChange = window.onStateChange;
+    // Hook into polygon change to notify 3D view
+    const _origSetPolygon = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(_state), 'polygon');
+})();
 
 // =========================================================================
 // EQUIPMENT SUGGESTION — auto-fill inverter + battery after calpinage
