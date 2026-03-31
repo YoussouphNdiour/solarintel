@@ -7,8 +7,9 @@ import { useStore } from '../store/useStore'
 import { getSunPosition, sunToDirection } from '../utils/solar'
 import { OBSTACLE_CFG } from './Obstacles'
 
-const PANEL_W = 1.72
-const PANEL_H = 1.04
+// Portrait orientation (1.04m wide × 1.72m tall) — matches 2D calpinage default
+const PANEL_W = 1.04
+const PANEL_H = 1.72
 const PANEL_THICKNESS = 0.04
 const SPACING = 0.08
 
@@ -85,6 +86,7 @@ export default function SolarPanels({ localPoly, roofType, pitch, azimuth, wallH
     panelCount, selectedPanel, setSelectedPanel,
     removedPanels, sceneMode, addPanel,
     irradianceMode, lat, lon, simDate, simHour, obstacles,
+    panelWidthMm, panelHeightMm, orientation,
   } = useStore()
   const meshRef = useRef<THREE.InstancedMesh>(null)
 
@@ -96,6 +98,14 @@ export default function SolarPanels({ localPoly, roofType, pitch, azimuth, wallH
       bboxH: Math.max(bbox.h, 1),
       bboxAngle: bbox.angle,
     })
+
+    // Use actual panel dimensions from 2D to match calpinage grid exactly
+    const wM = panelWidthMm / 1000   // meters
+    const hM = panelHeightMm / 1000  // meters
+    // Portrait: width along X (shorter), height along Z (taller)
+    // Landscape: width along X (longer), height along Z (shorter)
+    const pW = orientation === 'portrait' ? wM : hM  // panel width in 3D X-axis
+    const pH = orientation === 'portrait' ? hM : wM  // panel height in 3D Z-axis
 
     const polyXZ: [number, number][] = points.map(([x, y]) => [x, y])
 
@@ -114,11 +124,11 @@ export default function SolarPanels({ localPoly, roofType, pitch, azimuth, wallH
     }
 
     const result: PanelPos[] = []
-    const stepX = PANEL_W + SPACING
-    const stepZ = PANEL_H + SPACING
+    const stepX = pW + SPACING
+    const stepZ = pH + SPACING
 
-    // Large pool: allow many more panels than displayed (for add-panel mode)
-    const maxPool = panelCount + 50
+    // Large pool: always generate enough positions for the panel count + ghost preview
+    const maxPool = Math.max(panelCount * 3, panelCount + 80)
 
     for (const face of faces) {
       if (result.length >= maxPool) break
@@ -126,8 +136,8 @@ export default function SolarPanels({ localPoly, roofType, pitch, azimuth, wallH
       if (!geometry.boundingBox) geometry.computeBoundingBox()
       const bb = geometry.boundingBox!
 
-      for (let x = bb.min.x + PANEL_W / 2; x <= bb.max.x - PANEL_W / 2; x += stepX) {
-        for (let z = bb.min.z + PANEL_H / 2; z <= bb.max.z - PANEL_H / 2; z += stepZ) {
+      for (let x = bb.min.x + pW / 2; x <= bb.max.x - pW / 2; x += stepX) {
+        for (let z = bb.min.z + pH / 2; z <= bb.max.z - pH / 2; z += stepZ) {
           if (result.length >= maxPool) break
           if (!inPoly(x, z)) continue
           const y = normal.y > 1e-6
@@ -246,7 +256,11 @@ export default function SolarPanels({ localPoly, roofType, pitch, azimuth, wallH
       receiveShadow
       onClick={handleClick}
     >
-      <boxGeometry args={[PANEL_W, PANEL_THICKNESS, PANEL_H]} />
+      <boxGeometry args={[
+        orientation === 'portrait' ? panelWidthMm / 1000 : panelHeightMm / 1000,
+        PANEL_THICKNESS,
+        orientation === 'portrait' ? panelHeightMm / 1000 : panelWidthMm / 1000,
+      ]} />
       <meshStandardMaterial
         color={COLOR_NORMAL}
         roughness={0.25}

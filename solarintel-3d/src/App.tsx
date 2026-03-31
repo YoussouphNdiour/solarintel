@@ -21,6 +21,9 @@ export default function App() {
           lon: e.data.lon,
           annualConsumption: e.data.annualConsumption,
           installType: e.data.installType,
+          panelWidthMm: e.data.panelWidthMm,
+          panelHeightMm: e.data.panelHeightMm,
+          orientation: e.data.orientation,
         })
       }
       if (e.data.type === 'UPDATE_PANELS') {

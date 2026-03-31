@@ -11,6 +11,10 @@ interface AppState {
   lon: number
   annualConsumption: number
   installType: InstallType
+  // Panel physical dimensions (mm) + orientation from 2D calpinage
+  panelWidthMm: number
+  panelHeightMm: number
+  orientation: 'portrait' | 'landscape'
 
   // Roof configuration
   roofType: RoofType | null
@@ -62,6 +66,9 @@ interface AppState {
     lon?: number
     annualConsumption?: number
     installType?: InstallType
+    panelWidthMm?: number
+    panelHeightMm?: number
+    orientation?: 'portrait' | 'landscape'
   }) => void
   setPanelCount: (count: number) => void
   setRoofType: (type: RoofType) => void
@@ -96,6 +103,9 @@ export const useStore = create<AppState>((set, get) => ({
   lon: -17.467,
   annualConsumption: 0,
   installType: 'autoconsommation',
+  panelWidthMm: 1134,
+  panelHeightMm: 2278,
+  orientation: 'portrait',
 
   roofType: null,
   pitch: 15,
@@ -138,6 +148,9 @@ export const useStore = create<AppState>((set, get) => ({
       lon: data.lon ?? s.lon,
       annualConsumption: data.annualConsumption ?? s.annualConsumption,
       installType: data.installType ?? s.installType,
+      panelWidthMm: data.panelWidthMm ?? s.panelWidthMm,
+      panelHeightMm: data.panelHeightMm ?? s.panelHeightMm,
+      orientation: data.orientation ?? s.orientation,
     })),
 
   setPanelCount: (count) => set({ panelCount: count, removedPanels: new Set() }),

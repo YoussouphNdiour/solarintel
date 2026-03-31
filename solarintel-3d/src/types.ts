@@ -41,6 +41,9 @@ export interface ParentMessage {
   lon?: number
   annualConsumption?: number
   installType?: InstallType
+  panelWidthMm?: number
+  panelHeightMm?: number
+  orientation?: 'portrait' | 'landscape'
 }
 
 export interface ChildMessage {

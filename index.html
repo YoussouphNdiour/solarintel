@@ -2545,6 +2545,10 @@ function _send3DInit() {
         lon: centroid.longitude || -17.467,
         annualConsumption: _state.annualConsumption || 0,
         installType: _state.installType || 'autoconsommation',
+        // Panel physical dimensions so 3D matches 2D calpinage grid
+        panelWidthMm:  _state.panelWidth_mm  || 1134,
+        panelHeightMm: _state.panelHeight_mm || 2278,
+        orientation:   _state.orientation   || 'portrait',
     }, '*');
 }
 

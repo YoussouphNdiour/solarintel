@@ -10,7 +10,8 @@ export default function Compass() {
     <div className="absolute bottom-16 right-4 z-20 select-none">
       <div className="relative w-14 h-14">
         {/* Outer ring */}
-        <svg viewBox="0 0 56 56" className="w-full h-full drop-shadow-lg">
+        {/* pointer-events-none prevents browser extension SVGAnimatedString className errors */}
+        <svg viewBox="0 0 56 56" className="w-full h-full drop-shadow-lg" style={{ pointerEvents: 'none' }}>
           {/* Dark background */}
           <circle cx="28" cy="28" r="27" fill="#1E293B" stroke="#334155" strokeWidth="1" />
 
