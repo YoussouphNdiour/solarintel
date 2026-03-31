@@ -1,13 +1,30 @@
 import { useStore } from '../store/useStore'
-import { RoofType, ObstacleType } from '../types'
+import { RoofType, ObstacleType, WeatherMode, RoofMaterial } from '../types'
 import { OBSTACLE_CFG } from './Obstacles'
 
 const ROOF_LABELS: Record<RoofType, string> = {
-  flat: 'Plat',
-  shed: 'Mono-pente',
-  gable: 'Bi-pente',
-  hip: '4 pans',
+  flat: 'Plat', shed: 'Mono-pente', gable: 'Bi-pente', hip: '4 pans',
 }
+
+const WEATHER_CFG: { mode: WeatherMode; label: string; icon: string }[] = [
+  { mode: 'clear', label: 'Dégagé', icon: '☀️' },
+  { mode: 'cloudy', label: 'Nuageux', icon: '⛅' },
+  { mode: 'overcast', label: 'Couvert', icon: '☁️' },
+]
+
+const MATERIAL_CFG: { mat: RoofMaterial; label: string; color: string }[] = [
+  { mat: 'tuile-rouge', label: 'Tuile rouge', color: '#8B3A2A' },
+  { mat: 'tuile-grise', label: 'Tuile grise', color: '#2D3D52' },
+  { mat: 'zinc',        label: 'Zinc',        color: '#5B6E7A' },
+  { mat: 'bac-acier',   label: 'Bac acier',   color: '#374151' },
+  { mat: 'beton',       label: 'Béton',       color: '#6B7280' },
+]
+
+const SEASON_PRESETS = [
+  { label: 'Été', icon: '☀️',  month: 6, day: 21 },
+  { label: 'Éqx', icon: '🌍', month: 3, day: 21 },
+  { label: 'Hiver', icon: '❄️', month: 12, day: 21 },
+]
 
 function Slider({
   label, value, min, max, step = 1, unit, onChange,
@@ -45,19 +62,26 @@ export default function ControlsPanel() {
     pitch, setPitch,
     azimuth, setAzimuth,
     wallHeight, setWallHeight,
+    roofMaterial, setRoofMaterial,
+    weatherMode, setWeatherMode,
     simDate, setSimDate,
     simHour, setSimHour,
+    simSpeed, setSimSpeed,
     isPlaying, setIsPlaying,
     panelCount, annualConsumption, installType,
     controlsOpen, toggleControls,
+    showStats, toggleStats,
+    irradianceMode, toggleIrradiance,
     sceneMode, setSceneMode, obstacleTypeToPlace,
     obstacles, removedPanels,
+    takeScreenshot,
   } = useStore()
 
   const SPECIFIC_YIELD = 1700
   const selfUse = installType === 'autonome' ? 1.0 : installType === 'hybride' ? 0.85 : 0.70
-  const peakKwc = (panelCount * 0.545).toFixed(2)
-  const annualProduction = Math.round(panelCount * 0.545 * SPECIFIC_YIELD * (roofType === 'flat' ? 0.88 : 0.95))
+  const activeCount = panelCount - removedPanels.size
+  const peakKwc = (activeCount * 0.545).toFixed(2)
+  const annualProduction = Math.round(activeCount * 0.545 * SPECIFIC_YIELD * (roofType === 'flat' ? 0.88 : 0.95))
   const coverage = annualConsumption > 0
     ? Math.min(100, Math.round((annualProduction * selfUse) / annualConsumption * 100))
     : null
@@ -77,7 +101,80 @@ export default function ControlsPanel() {
         {controlsOpen ? 'Masquer' : 'Contrôles'}
       </button>
 
-      {/* Panel */}
+      {/* Action buttons row (top-left area) */}
+      <div className="absolute top-4 left-4 z-20 flex items-center gap-2">
+        {/* Add panel mode */}
+        <button
+          onClick={() => setSceneMode(sceneMode === 'add-panel' ? 'view' : 'add-panel')}
+          title="Ajouter un panneau"
+          className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs border transition-all backdrop-blur-sm ${
+            sceneMode === 'add-panel'
+              ? 'bg-green-500/20 border-green-500/60 text-green-400'
+              : 'bg-[#1E293B]/90 border-[#334155] text-[#94A3B8] hover:text-white hover:border-green-500/60'
+          }`}
+        >
+          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+          </svg>
+          {sceneMode === 'add-panel' ? 'Annuler' : 'Ajouter'}
+        </button>
+
+        {/* Irradiance toggle */}
+        <button
+          onClick={toggleIrradiance}
+          title="Mode irradiance / ombrage"
+          className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs border transition-all backdrop-blur-sm ${
+            irradianceMode
+              ? 'bg-[#F59E0B]/20 border-[#F59E0B]/60 text-[#F59E0B]'
+              : 'bg-[#1E293B]/90 border-[#334155] text-[#94A3B8] hover:text-white hover:border-[#F59E0B]/60'
+          }`}
+        >
+          🌡️ Irradiance
+        </button>
+
+        {/* Stats toggle */}
+        <button
+          onClick={toggleStats}
+          title="Statistiques de production"
+          className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs border transition-all backdrop-blur-sm ${
+            showStats
+              ? 'bg-[#0EA5E9]/20 border-[#0EA5E9]/60 text-[#0EA5E9]'
+              : 'bg-[#1E293B]/90 border-[#334155] text-[#94A3B8] hover:text-white hover:border-[#0EA5E9]/60'
+          }`}
+        >
+          📊 Stats
+        </button>
+
+        {/* Screenshot */}
+        <button
+          onClick={takeScreenshot}
+          title="Capturer une image"
+          className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs border bg-[#1E293B]/90 border-[#334155] text-[#94A3B8] hover:text-white hover:border-[#0EA5E9] transition-all backdrop-blur-sm"
+        >
+          📷
+        </button>
+      </div>
+
+      {/* Add-panel mode banner */}
+      {sceneMode === 'add-panel' && (
+        <div className="absolute top-14 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 bg-green-500/90 text-black text-xs font-semibold px-4 py-2 rounded-full shadow-lg">
+          <div className="w-1.5 h-1.5 rounded-full bg-black/50 animate-pulse" />
+          Cliquez sur le panneau vert pour l'ajouter
+        </div>
+      )}
+
+      {/* Irradiance legend */}
+      {irradianceMode && (
+        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 bg-[#1E293B]/90 border border-[#334155] rounded-lg px-3 py-2 backdrop-blur-sm">
+          <span className="text-[#64748B] text-[10px]">Ombre</span>
+          <div className="w-32 h-2 rounded-full" style={{
+            background: 'linear-gradient(to right, #1E293B, #1D4ED8, #0EA5E9, #22C55E, #FBBF24)'
+          }} />
+          <span className="text-[#64748B] text-[10px]">Plein soleil</span>
+        </div>
+      )}
+
+      {/* Main panel */}
       {controlsOpen && (
         <div className="absolute top-14 right-4 z-20 w-64 bg-[#1E293B]/95 border border-[#334155] rounded-xl shadow-2xl backdrop-blur-sm overflow-hidden">
           {/* Header */}
@@ -90,7 +187,6 @@ export default function ControlsPanel() {
 
             {/* Roof */}
             <Section title="Toiture">
-              {/* Roof type */}
               <div className="space-y-1.5">
                 <div className="text-[#94A3B8] text-xs">Type de toit</div>
                 <div className="grid grid-cols-4 gap-1">
@@ -119,18 +215,61 @@ export default function ControlsPanel() {
                 <div className="relative w-8 h-8 flex-shrink-0">
                   <div className="absolute inset-0 rounded-full border border-[#334155]" />
                   <div className="absolute inset-0 flex items-center justify-center">
-                    <div
-                      className="w-0.5 h-3 bg-[#0EA5E9] origin-bottom rounded-full"
+                    <div className="w-0.5 h-3 bg-[#0EA5E9] origin-bottom rounded-full"
                       style={{ transform: `rotate(${azimuth}deg)`, transformOrigin: '50% 100%' }}
                     />
                   </div>
                   <span className="absolute -top-1 left-1/2 -translate-x-1/2 text-[8px] text-[#475569]">N</span>
                 </div>
                 <span className="text-[#64748B] text-[10px]">
-                  {azimuth === 180 ? 'Orienté plein Sud (optimal)' :
+                  {azimuth === 180 ? 'Plein Sud (optimal)' :
                    azimuth < 135 || azimuth > 225 ? 'Sous-optimal — préférer ≈180°' :
-                   'Orientation proche du Sud'}
+                   'Proche du Sud'}
                 </span>
+              </div>
+            </Section>
+
+            <div className="h-px bg-[#334155]" />
+
+            {/* Roof material */}
+            <Section title="Matériau de couverture">
+              <div className="space-y-1">
+                {MATERIAL_CFG.map(({ mat, label, color }) => (
+                  <button
+                    key={mat}
+                    onClick={() => setRoofMaterial(mat)}
+                    className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs transition-all ${
+                      roofMaterial === mat
+                        ? 'bg-[#0EA5E9]/15 border border-[#0EA5E9]/50 text-white'
+                        : 'border border-transparent text-[#64748B] hover:text-white hover:bg-[#0F172A]'
+                    }`}
+                  >
+                    <div className="w-4 h-4 rounded-sm flex-shrink-0 border border-white/10" style={{ background: color }} />
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </Section>
+
+            <div className="h-px bg-[#334155]" />
+
+            {/* Weather */}
+            <Section title="Météo">
+              <div className="grid grid-cols-3 gap-1">
+                {WEATHER_CFG.map(({ mode, label, icon }) => (
+                  <button
+                    key={mode}
+                    onClick={() => setWeatherMode(mode)}
+                    className={`flex flex-col items-center gap-0.5 py-2 rounded-lg text-[10px] border transition-all ${
+                      weatherMode === mode
+                        ? 'bg-[#0EA5E9]/15 border-[#0EA5E9]/50 text-white'
+                        : 'bg-[#0F172A] border-[#334155] text-[#64748B] hover:text-white hover:border-[#475569]'
+                    }`}
+                  >
+                    <span className="text-base">{icon}</span>
+                    <span>{label}</span>
+                  </button>
+                ))}
               </div>
             </Section>
 
@@ -138,6 +277,26 @@ export default function ControlsPanel() {
 
             {/* Sun simulation */}
             <Section title="Simulation solaire">
+              {/* Season presets */}
+              <div className="space-y-1.5">
+                <div className="text-[#94A3B8] text-xs">Saison</div>
+                <div className="grid grid-cols-3 gap-1">
+                  {SEASON_PRESETS.map(({ label, icon, month, day }) => (
+                    <button
+                      key={label}
+                      onClick={() => {
+                        const d = new Date(new Date().getFullYear(), month - 1, day, 12)
+                        setSimDate(d)
+                      }}
+                      className="flex flex-col items-center gap-0.5 py-1.5 rounded-lg text-[10px] bg-[#0F172A] border border-[#334155] text-[#64748B] hover:text-white hover:border-[#475569] transition-all"
+                    >
+                      <span>{icon}</span>
+                      <span>{label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between">
                   <span className="text-[#94A3B8] text-xs">Date</span>
@@ -172,27 +331,30 @@ export default function ControlsPanel() {
                   }`}
                 >
                   {isPlaying ? (
-                    <>
-                      <svg className="w-3 h-3" viewBox="0 0 24 24" fill="currentColor">
-                        <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z"/>
-                      </svg>
-                      Pause
-                    </>
+                    <><svg className="w-3 h-3" viewBox="0 0 24 24" fill="currentColor"><path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z"/></svg>Pause</>
                   ) : (
-                    <>
-                      <svg className="w-3 h-3" viewBox="0 0 24 24" fill="currentColor">
-                        <path d="M8 5v14l11-7z"/>
-                      </svg>
-                      Animer
-                    </>
+                    <><svg className="w-3 h-3" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>Animer</>
                   )}
                 </button>
                 <button
                   onClick={() => { setSimHour(12); setIsPlaying(false) }}
-                  className="px-3 py-2 rounded-lg text-xs text-[#64748B] hover:text-white bg-[#0F172A] border border-[#334155] hover:border-[#334155] transition-all"
+                  className="px-3 py-2 rounded-lg text-xs text-[#64748B] hover:text-white bg-[#0F172A] border border-[#334155] transition-all"
                 >
                   12h
                 </button>
+              </div>
+
+              {/* Animation speed */}
+              <div className="space-y-1">
+                <div className="flex items-center justify-between">
+                  <span className="text-[#94A3B8] text-xs">Vitesse</span>
+                  <span className="text-white text-xs font-mono">×{simSpeed.toFixed(1)}</span>
+                </div>
+                <input
+                  type="range" min={0.5} max={5} step={0.5} value={simSpeed}
+                  onChange={(e) => setSimSpeed(+e.target.value)}
+                  className="w-full h-1.5 rounded-full accent-[#94A3B8] cursor-pointer"
+                />
               </div>
             </Section>
 
@@ -210,11 +372,7 @@ export default function ControlsPanel() {
                   return (
                     <button
                       key={type}
-                      onClick={() =>
-                        isActive
-                          ? setSceneMode('view')
-                          : setSceneMode('place-obstacle', type)
-                      }
+                      onClick={() => isActive ? setSceneMode('view') : setSceneMode('place-obstacle', type)}
                       title={`Placer : ${cfg.label}`}
                       className={`flex flex-col items-center gap-1 py-2 px-1 rounded-lg border text-[10px] font-medium transition-all ${
                         isActive
@@ -231,14 +389,12 @@ export default function ControlsPanel() {
               {sceneMode === 'place-obstacle' && (
                 <div className="flex items-center gap-1.5 bg-[#F59E0B]/10 border border-[#F59E0B]/30 rounded-lg px-2.5 py-2">
                   <div className="w-1.5 h-1.5 rounded-full bg-[#F59E0B] animate-pulse flex-shrink-0" />
-                  <span className="text-[#F59E0B] text-[10px]">
-                    Cliquez sur le toit pour placer. Appuyez sur Échap pour annuler.
-                  </span>
+                  <span className="text-[#F59E0B] text-[10px]">Cliquez sur le toit pour placer. Échap pour annuler.</span>
                 </div>
               )}
               {obstacles.length > 0 && (
                 <div className="flex items-center justify-between text-[10px]">
-                  <span className="text-[#64748B]">{obstacles.length} obstacle{obstacles.length > 1 ? 's' : ''} placé{obstacles.length > 1 ? 's' : ''}</span>
+                  <span className="text-[#64748B]">{obstacles.length} obstacle{obstacles.length > 1 ? 's' : ''}</span>
                   <button
                     onClick={() => {
                       const ids = useStore.getState().obstacles.map(o => o.id)
@@ -258,12 +414,10 @@ export default function ControlsPanel() {
             <Section title="Résultats estimés">
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <span className="text-[#94A3B8] text-xs">Panneaux</span>
+                  <span className="text-[#94A3B8] text-xs">Panneaux actifs</span>
                   <span className="text-white text-xs font-mono font-semibold">
-                    {panelCount - removedPanels.size}
-                    {removedPanels.size > 0 && (
-                      <span className="text-[#475569] ml-1">(-{removedPanels.size})</span>
-                    )}
+                    {activeCount}
+                    {removedPanels.size > 0 && <span className="text-[#475569] ml-1">(-{removedPanels.size})</span>}
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
@@ -272,9 +426,7 @@ export default function ControlsPanel() {
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-[#94A3B8] text-xs">Production est.</span>
-                  <span className="text-[#F59E0B] text-xs font-mono font-semibold">
-                    ~{annualProduction.toLocaleString('fr-FR')} kWh/an
-                  </span>
+                  <span className="text-[#F59E0B] text-xs font-mono font-semibold">~{annualProduction.toLocaleString('fr-FR')} kWh/an</span>
                 </div>
                 {coverage !== null && (
                   <>

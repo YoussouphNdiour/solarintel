@@ -2,6 +2,10 @@ export type RoofType = 'flat' | 'shed' | 'gable' | 'hip'
 
 export type InstallType = 'autoconsommation' | 'hybride' | 'autonome'
 
+export type WeatherMode = 'clear' | 'cloudy' | 'overcast'
+
+export type RoofMaterial = 'tuile-rouge' | 'tuile-grise' | 'zinc' | 'bac-acier' | 'beton'
+
 export interface LocalPolygon {
   points: [number, number][]
   centroid: [number, number]
@@ -47,7 +51,7 @@ export interface ChildMessage {
 
 export type ObstacleType = 'chimney' | 'ac' | 'tank'
 
-export type SceneMode = 'view' | 'place-obstacle'
+export type SceneMode = 'view' | 'place-obstacle' | 'add-panel'
 
 export interface Obstacle {
   type: ObstacleType

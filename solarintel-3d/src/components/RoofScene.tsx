@@ -11,6 +11,7 @@ import PanelPopup from './PanelPopup'
 import Obstacles from './Obstacles'
 import ObstaclePopup from './ObstaclePopup'
 import Measurements from './Measurements'
+import Compass from './Compass'
 
 function SceneContent() {
   const { polygon, roofType, pitch, azimuth, wallHeight, tickSimulation, isPlaying } = useStore()
@@ -127,7 +128,7 @@ export default function RoofScene() {
       <Canvas
         shadows
         camera={{ position: [15, 12, 15], fov: 45, near: 0.1, far: 1000 }}
-        gl={{ antialias: true, shadowMapType: 2 /* PCFSoftShadowMap */ }}
+        gl={{ antialias: true, shadowMapType: 2, preserveDrawingBuffer: true }}
         style={{ background: 'transparent' }}
         // Disable orbit while placing obstacles so click doesn't also orbit
         onPointerDown={(e) => {
@@ -157,6 +158,7 @@ export default function RoofScene() {
       <PanelPopup />
       <ObstaclePopup />
       <ResetCameraButton controlsRef={controlsRef} />
+      <Compass />
     </div>
   )
 }

@@ -4,6 +4,7 @@ import { ParentMessage } from './types'
 import RoofTypeModal from './components/RoofTypeModal'
 import RoofScene from './components/RoofScene'
 import ControlsPanel from './components/ControlsPanel'
+import StatsPanel from './components/StatsPanel'
 
 export default function App() {
   const { roofType, setFromParent } = useStore()
@@ -44,6 +45,9 @@ export default function App() {
 
       {/* Controls panel (right overlay) */}
       <ControlsPanel />
+
+      {/* Stats panel (bottom overlay) */}
+      <StatsPanel />
 
       {/* Roof type selection modal (shown until user picks a type) */}
       {roofType === null && <RoofTypeModal />}
