@@ -2545,10 +2545,12 @@ function _send3DInit() {
         lon: centroid.longitude || -17.467,
         annualConsumption: _state.annualConsumption || 0,
         installType: _state.installType || 'autoconsommation',
-        // Panel physical dimensions so 3D matches 2D calpinage grid
+        // Panel physical dimensions + spacing so 3D matches 2D calpinage grid exactly
         panelWidthMm:  _state.panelWidth_mm  || 1134,
         panelHeightMm: _state.panelHeight_mm || 2278,
         orientation:   _state.orientation   || 'portrait',
+        spacingHCm:    _state.spacingH_cm    ?? 2,
+        spacingVCm:    _state.spacingV_cm    ?? 5,
     }, '*');
 }
 

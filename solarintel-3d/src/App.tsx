@@ -24,6 +24,8 @@ export default function App() {
           panelWidthMm: e.data.panelWidthMm,
           panelHeightMm: e.data.panelHeightMm,
           orientation: e.data.orientation,
+          spacingHCm: e.data.spacingHCm,
+          spacingVCm: e.data.spacingVCm,
         })
       }
       if (e.data.type === 'UPDATE_PANELS') {

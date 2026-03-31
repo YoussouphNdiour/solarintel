@@ -44,6 +44,8 @@ export interface ParentMessage {
   panelWidthMm?: number
   panelHeightMm?: number
   orientation?: 'portrait' | 'landscape'
+  spacingHCm?: number
+  spacingVCm?: number
 }
 
 export interface ChildMessage {

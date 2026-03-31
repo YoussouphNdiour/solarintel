@@ -7,11 +7,7 @@ import { useStore } from '../store/useStore'
 import { getSunPosition, sunToDirection } from '../utils/solar'
 import { OBSTACLE_CFG } from './Obstacles'
 
-// Portrait orientation (1.04m wide × 1.72m tall) — matches 2D calpinage default
-const PANEL_W = 1.04
-const PANEL_H = 1.72
 const PANEL_THICKNESS = 0.04
-const SPACING = 0.08
 
 const COLOR_NORMAL   = new THREE.Color('#0EA5E9')
 const COLOR_SELECTED = new THREE.Color('#F59E0B')
@@ -87,6 +83,7 @@ export default function SolarPanels({ localPoly, roofType, pitch, azimuth, wallH
     removedPanels, sceneMode, addPanel,
     irradianceMode, lat, lon, simDate, simHour, obstacles,
     panelWidthMm, panelHeightMm, orientation,
+    spacingHCm, spacingVCm,
   } = useStore()
   const meshRef = useRef<THREE.InstancedMesh>(null)
 
@@ -107,9 +104,14 @@ export default function SolarPanels({ localPoly, roofType, pitch, azimuth, wallH
     const pW = orientation === 'portrait' ? wM : hM  // panel width in 3D X-axis
     const pH = orientation === 'portrait' ? hM : wM  // panel height in 3D Z-axis
 
+    // Spacing matches 2D calpinage (spacingH = horizontal gap, spacingV = vertical gap)
+    const spacingX = spacingHCm / 100  // meters
+    const spacingZ = spacingVCm / 100  // meters
+
     const polyXZ: [number, number][] = points.map(([x, y]) => [x, y])
 
-    function inPoly(px: number, pz: number): boolean {
+    // Point-in-polygon (ray casting)
+    function pointInPoly(px: number, pz: number): boolean {
       if (polyXZ.length < 3) return true
       let inside = false
       const n = polyXZ.length
@@ -123,9 +125,21 @@ export default function SolarPanels({ localPoly, roofType, pitch, azimuth, wallH
       return inside
     }
 
+    // Mirror 2D containment: all 4 panel corners must be inside the polygon
+    function panelContained(cx: number, cz: number): boolean {
+      const hw = pW / 2
+      const hh = pH / 2
+      return (
+        pointInPoly(cx - hw, cz - hh) &&
+        pointInPoly(cx + hw, cz - hh) &&
+        pointInPoly(cx + hw, cz + hh) &&
+        pointInPoly(cx - hw, cz + hh)
+      )
+    }
+
     const result: PanelPos[] = []
-    const stepX = pW + SPACING
-    const stepZ = pH + SPACING
+    const stepX = pW + spacingX
+    const stepZ = pH + spacingZ
 
     // Large pool: always generate enough positions for the panel count + ghost preview
     const maxPool = Math.max(panelCount * 3, panelCount + 80)
@@ -139,7 +153,7 @@ export default function SolarPanels({ localPoly, roofType, pitch, azimuth, wallH
       for (let x = bb.min.x + pW / 2; x <= bb.max.x - pW / 2; x += stepX) {
         for (let z = bb.min.z + pH / 2; z <= bb.max.z - pH / 2; z += stepZ) {
           if (result.length >= maxPool) break
-          if (!inPoly(x, z)) continue
+          if (!panelContained(x, z)) continue
           const y = normal.y > 1e-6
             ? wallHeight - (normal.x * x + normal.z * z) / normal.y
             : wallHeight
@@ -150,7 +164,7 @@ export default function SolarPanels({ localPoly, roofType, pitch, azimuth, wallH
     }
 
     return result
-  }, [localPoly, roofType, pitch, azimuth, wallHeight, panelCount])
+  }, [localPoly, roofType, pitch, azimuth, wallHeight, panelCount, panelWidthMm, panelHeightMm, orientation, spacingHCm, spacingVCm])
 
   const COLOR_REMOVED = new THREE.Color('#0F172A')
   const COLOR_GHOST = new THREE.Color('#22C55E')
