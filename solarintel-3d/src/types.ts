@@ -52,7 +52,7 @@ export interface ChildMessage {
   azimuth?: number
 }
 
-export type ObstacleType = 'chimney' | 'ac' | 'tank'
+export type ObstacleType = 'chimney' | 'ac' | 'tank' | 'tree' | 'building' | 'antenna' | 'mast'
 
 export type SceneMode = 'view' | 'place-obstacle' | 'add-panel'
 

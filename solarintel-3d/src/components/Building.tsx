@@ -13,7 +13,8 @@ export default function Building({ localPoly, wallHeight }: Props) {
     if (pts.length < 3) return null
 
     // Create Shape in XY plane — will be rotated to XZ
-    const shape = new THREE.Shape(pts.map(([x, y]) => new THREE.Vector2(x, y)))
+    // Negate Y so that after rotateX(-π/2): world Z = +Y = +North, matching Roof/SolarPanels coords
+    const shape = new THREE.Shape(pts.map(([x, y]) => new THREE.Vector2(x, -y)))
 
     const extGeo = new THREE.ExtrudeGeometry(shape, {
       depth: wallHeight,
