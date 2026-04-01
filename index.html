@@ -1446,6 +1446,7 @@ function updateState(prop, value) {
 let _inUpdateKPIs = false;  // recursion guard: updateKPIs ↔ updateSystemCost
 let mapMode = 'draw-zone';                 // 'draw-zone'|'add-panel'|'select'|'delete'|'draw-hole'
 let _isHoleMode = false;                   // true when next polygon drawn is a hole
+let _suppressDeleteHandler = false;   // prevents sketchLayer.remove() from triggering zone-wipe
 let panelHistory = [];                     // [{action:'add'|'delete'|'bulk', graphics:[]}]
 let selectedPanelGraphic = null;
 let webMercatorUtilsRef = null;            // set inside require() callback
@@ -2273,20 +2274,31 @@ require([
             }
             if (event.state === "complete") {
                 if (_isHoleMode) {
-                    // Process hole directly here so we have access to event.graphic
                     _isHoleMode = false;
                     const geoHole = webMercatorUtils.webMercatorToGeographic(event.graphic.geometry);
                     if (_state.activeZoneIdx >= 0 && _state.zones[_state.activeZoneIdx]) {
                         const activeZone = _state.zones[_state.activeZoneIdx];
-                        const diff = geometryEngine.difference(activeZone.polygon, geoHole);
-                        if (diff) {
-                            activeZone.polygon = diff;
-                            const diffWebMerc = webMercatorUtils.geographicToWebMercator(diff);
-                            activeZone.area = Math.abs(geometryEngine.geodesicArea(diffWebMerc, "square-meters"));
-                        }
+                        if (!activeZone.holes) activeZone.holes = [];
+                        const holeIdx = activeZone.holes.length;
+                        activeZone.holes.push(geoHole);
+                        // Subtract hole area from zone area
+                        const holeWebMerc = webMercatorUtils.geographicToWebMercator(event.graphic.geometry);
+                        const holeArea = Math.abs(geometryEngine.geodesicArea(holeWebMerc, "square-meters"));
+                        activeZone.area = Math.max(0, (activeZone.area || 0) - holeArea);
+                        // Mark graphic: _isHole prevents update handler treating it as a zone
+                        // _zoneIdx / _holeIdx allow deletion later
+                        event.graphic.attributes = Object.assign({}, event.graphic.attributes || {}, {
+                            _isHole: true,
+                            _zoneIdx: _state.activeZoneIdx,
+                            _holeIdx: holeIdx,
+                        });
+                        // Style the hole graphic distinctly (red hatched)
+                        event.graphic.symbol = {
+                            type: 'simple-fill',
+                            color: [220, 38, 38, 0.25],
+                            outline: { color: [220, 38, 38, 0.9], width: 1.5, style: 'dash' },
+                        };
                     }
-                    // Mark graphic so the update handler never treats it as a zone
-                    event.graphic.attributes = Object.assign({}, event.graphic.attributes || {}, { _isHole: true });
                     generateCalpinage();
                     setMapMode('draw-zone');
                     return;
@@ -2324,6 +2336,7 @@ require([
         });
 
         sketchWidget.on("delete", function() {
+            if (_suppressDeleteHandler) return;
             panelLayer.removeAll();
             panelHistory = [];
             _setUndoEnabled(false);
@@ -2350,6 +2363,19 @@ require([
                 if (sketchWidget) sketchWidget.cancel();
                 closePanelPopup();
                 const hitResult = await mapView.hitTest(event);
+
+                // In delete mode, check for hole graphics first
+                if (mapMode === 'delete') {
+                    const holeHit = hitResult.results.find(function(r) {
+                        return r.graphic && r.graphic.layer === sketchLayer &&
+                               r.graphic.attributes && r.graphic.attributes._isHole;
+                    });
+                    if (holeHit) {
+                        deleteHole(holeHit.graphic);
+                        return;
+                    }
+                }
+
                 const hit = hitResult.results.find(function(r) {
                     return r.graphic && r.graphic.layer === panelLayer;
                 });
@@ -2395,6 +2421,7 @@ require([
             polygon: geoPolygon,
             area: area,
             centroid: { latitude: centroid.latitude, longitude: centroid.longitude },
+            holes: [],
         });
         _state.activeZoneIdx = zoneIdx;
 
@@ -2415,6 +2442,48 @@ require([
 });
 
 // =========================================================================
+// HOLE DELETION
+// =========================================================================
+function deleteHole(graphic) {
+    const zoneIdx = graphic.attributes && graphic.attributes._zoneIdx;
+    const holeIdx = graphic.attributes && graphic.attributes._holeIdx;
+    if (typeof zoneIdx !== 'number' || typeof holeIdx !== 'number') return;
+    const zone = _state.zones[zoneIdx];
+    if (!zone || !zone.holes) return;
+
+    // Restore the hole area to zone area
+    if (zone.holes[holeIdx]) {
+        const holeWebMerc = webMercatorUtils.geographicToWebMercator
+            ? webMercatorUtils.geographicToWebMercator(zone.holes[holeIdx])
+            : null;
+        if (holeWebMerc && geometryEngineRef) {
+            zone.area = (zone.area || 0) + Math.abs(geometryEngineRef.geodesicArea(holeWebMerc, "square-meters"));
+        }
+    }
+
+    zone.holes.splice(holeIdx, 1);
+    STATE.polygonArea_m2 = _state.zones.reduce(function(s, z) { return s + (z.area || 0); }, 0);
+
+    // Update _holeIdx on sibling graphics in the same zone
+    if (sketchLayer) {
+        sketchLayer.graphics.forEach(function(g) {
+            if (g.attributes && g.attributes._isHole &&
+                g.attributes._zoneIdx === zoneIdx &&
+                g.attributes._holeIdx > holeIdx) {
+                g.attributes = Object.assign({}, g.attributes, { _holeIdx: g.attributes._holeIdx - 1 });
+            }
+        });
+    }
+
+    // Remove graphic from sketch layer without triggering zone-wipe delete event
+    _suppressDeleteHandler = true;
+    sketchLayer.remove(graphic);
+    _suppressDeleteHandler = false;
+
+    generateCalpinage();
+}
+
+// =========================================================================
 // CALPINAGE ALGORITHM
 // =========================================================================
 function generateCalpinage() {
@@ -2426,6 +2495,7 @@ function generateCalpinage() {
             polygon: STATE.polygon,
             area: STATE.polygonArea_m2 || 0,
             centroid: STATE.centroid,
+            holes: [],
         }];
         _state.activeZoneIdx = 0;
     }
@@ -2438,7 +2508,7 @@ function generateCalpinage() {
     let totalArea = 0;
 
     _state.zones.forEach(function(zone, idx) {
-        const count = _calpinageOneZone(zone.polygon, idx);
+        const count = _calpinageOneZone(zone, idx);
         totalPanels += count;
         totalArea += (zone.area || 0);
     });
@@ -2468,7 +2538,9 @@ function generateCalpinage() {
     if (_view3dReady && _state.zones.length > 0) _send3DInit();
 }
 
-function _calpinageOneZone(polygon, zoneIdx) {
+function _calpinageOneZone(zone, zoneIdx) {
+    const polygon = zone.polygon;
+    const holes = zone.holes || [];
     if (!polygon || !geometryEngineRef || !GraphicRef || !PolygonRef) return 0;
 
     let panelW_m, panelH_m;
@@ -2524,7 +2596,10 @@ function _calpinageOneZone(polygon, zoneIdx) {
                 rings: [[[x1,y1],[x2,y1],[x2,y2],[x1,y2],[x1,y1]]],
                 spatialReference: { wkid: 4326 },
             });
-            if (geometryEngineRef.contains(polygon, panelPoly)) panels.push(panelPoly);
+            if (geometryEngineRef.contains(polygon, panelPoly) &&
+                !holes.some(function(h) { return geometryEngineRef.intersects(h, panelPoly); })) {
+                panels.push(panelPoly);
+            }
             lat += cellH_deg;
         }
         lon += cellW_deg;
