@@ -2612,9 +2612,21 @@ window.addEventListener('message', function(e) {
 
     // Sync tilt/azimuth from 3D view back to simulation params
     if (e.data.type === 'TILT_AZIMUTH') {
-        // Could store these and use in next simulation run
-        // For now just log
         console.log('[3D→2D] tilt:', e.data.tilt, 'azimuth:', e.data.azimuth);
+    }
+
+    // Panel added in 3D view → update 2D panel count
+    if (e.data.type === 'ADD_PANEL') {
+        STATE.panelCount = (STATE.panelCount || 0) + 1;
+        _state.panelCount = STATE.panelCount;
+        updatePanelBadge();
+    }
+
+    // Panel removed in 3D view → update 2D panel count
+    if (e.data.type === 'REMOVE_PANEL') {
+        STATE.panelCount = Math.max(0, (STATE.panelCount || 0) - 1);
+        _state.panelCount = STATE.panelCount;
+        updatePanelBadge();
     }
 });
 

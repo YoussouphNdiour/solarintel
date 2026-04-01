@@ -49,7 +49,7 @@ export interface ParentMessage {
 }
 
 export interface ChildMessage {
-  type: 'TILT_AZIMUTH' | 'READY' | 'REMOVE_PANEL'
+  type: 'TILT_AZIMUTH' | 'READY' | 'REMOVE_PANEL' | 'ADD_PANEL'
   tilt?: number
   azimuth?: number
 }
