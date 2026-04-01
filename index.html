@@ -966,9 +966,13 @@
 
             <!-- Map Toolbar (top-left) -->
             <div class="map-toolbar" id="mapToolbar">
-                <button class="map-tool-btn active" id="toolDrawZone" onclick="setMapMode('draw-zone')" title="Dessiner / modifier la zone toiture">
+                <button class="map-tool-btn active" id="toolDrawZone" onclick="setMapMode('draw-zone')" title="Dessiner / modifier une zone toiture">
                     <i data-lucide="pen-tool" class="w-3.5 h-3.5"></i>
                     Zone
+                </button>
+                <button class="map-tool-btn" id="toolHole" onclick="setMapMode('draw-hole')" title="Créer un trou dans la zone active (espace vert, obstacle interne)" disabled>
+                    <i data-lucide="scissors" class="w-3.5 h-3.5"></i>
+                    Trou
                 </button>
                 <div class="toolbar-sep"></div>
                 <button class="map-tool-btn" id="toolAddPanel" onclick="setMapMode('add-panel')" title="Cliquer sur la carte pour ajouter un panneau">
@@ -1393,6 +1397,8 @@ const _state = {
     polygon: null,
     polygonArea_m2: 0,
     centroid: null,
+    zones: [],          // [{polygon, area, centroid}] — multi-zone support
+    activeZoneIdx: -1,
     panelBrand: "JA Solar",
     panelModel: "JAM72S30-545/MR",
     panelPower: 545,
@@ -1438,7 +1444,8 @@ function updateState(prop, value) {
 // MAP INTERACTION STATE
 // =========================================================================
 let _inUpdateKPIs = false;  // recursion guard: updateKPIs ↔ updateSystemCost
-let mapMode = 'draw-zone';                 // 'draw-zone'|'add-panel'|'select'|'delete'
+let mapMode = 'draw-zone';                 // 'draw-zone'|'add-panel'|'select'|'delete'|'draw-hole'
+let _isHoleMode = false;                   // true when next polygon drawn is a hole
 let panelHistory = [];                     // [{action:'add'|'delete'|'bulk', graphics:[]}]
 let selectedPanelGraphic = null;
 let webMercatorUtilsRef = null;            // set inside require() callback
@@ -2288,10 +2295,13 @@ require([
             panelLayer.removeAll();
             panelHistory = [];
             _setUndoEnabled(false);
+            _state.zones = [];
+            _state.activeZoneIdx = -1;
             STATE.polygon = null;
             STATE.polygonArea_m2 = 0;
             STATE.centroid = null;
             document.getElementById('toolClear').disabled = true;
+            document.getElementById('toolHole').disabled = true;
         });
 
         // ── Custom panel management click handler ──────────────────
@@ -2326,22 +2336,50 @@ require([
     });
 
     function handlePolygonUpdate(polygon) {
-        // La carte est en WebMercator (EPSG:3857).
-        // On convertit en WGS84 (EPSG:4326) pour que le calpinage
-        // travaille en degrés et non en mètres projetés.
         const geoPolygon = webMercatorUtils.webMercatorToGeographic(polygon);
-
-        const area    = geometryEngine.geodesicArea(polygon, "square-meters");
+        const area    = Math.abs(geometryEngine.geodesicArea(polygon, "square-meters"));
         const centroid = geoPolygon.centroid;
 
-        STATE.polygon        = geoPolygon;   // WGS84 — utilisé par generateCalpinage()
-        STATE.polygonArea_m2 = Math.abs(area);
+        if (_isHoleMode) {
+            // Subtract hole from the active zone
+            _isHoleMode = false;
+            if (_state.activeZoneIdx >= 0 && _state.zones[_state.activeZoneIdx]) {
+                const activeZone = _state.zones[_state.activeZoneIdx];
+                const diff = geometryEngine.difference(activeZone.polygon, geoPolygon);
+                if (diff) {
+                    activeZone.polygon = diff;
+                    const diffWebMerc = webMercatorUtils.geographicToWebMercator(diff);
+                    activeZone.area = Math.abs(geometryEngine.geodesicArea(diffWebMerc, "square-meters"));
+                }
+            }
+            generateCalpinage();
+            setMapMode('draw-zone');
+            return;
+        }
+
+        // New zone — add to zones array
+        const zoneIdx = _state.zones.length;
+        _state.zones.push({
+            polygon: geoPolygon,
+            area: area,
+            centroid: { latitude: centroid.latitude, longitude: centroid.longitude },
+        });
+        _state.activeZoneIdx = zoneIdx;
+
+        // Keep legacy STATE fields for backward compat (first zone drives 3D view)
+        STATE.polygon        = _state.zones[0].polygon;
+        STATE.polygonArea_m2 = _state.zones.reduce(function(s, z) { return s + z.area; }, 0);
         STATE.centroid       = { latitude: centroid.latitude, longitude: centroid.longitude };
 
-        // Auto-zoom sur le polygone dessiné (extent en WebMercator pour la vue)
-        mapView.goTo(polygon.extent.expand(2.5));
+        // Enable zone-dependent tools
+        ['toolAddPanel','toolSelect','toolDelete','toolHole'].forEach(function(id) {
+            const el = document.getElementById(id);
+            if (el) el.disabled = false;
+        });
 
         generateCalpinage();
+
+        mapView.goTo(polygon.extent.expand(2.5));
     }
 });
 
@@ -2349,14 +2387,59 @@ require([
 // CALPINAGE ALGORITHM
 // =========================================================================
 function generateCalpinage() {
-    if (!STATE.polygon || !geometryEngineRef || !GraphicRef) return;
+    if (_state.zones.length === 0 && !STATE.polygon) return;
 
-    const polygon = STATE.polygon;
+    // Backward compat: if zones not populated but STATE.polygon is set
+    if (_state.zones.length === 0 && STATE.polygon) {
+        _state.zones = [{
+            polygon: STATE.polygon,
+            area: STATE.polygonArea_m2 || 0,
+            centroid: STATE.centroid,
+        }];
+        _state.activeZoneIdx = 0;
+    }
+
     panelLayer.removeAll();
     panelHistory = [];
     _setUndoEnabled(false);
 
-    // Panel dimensions in meters
+    let totalPanels = 0;
+    let totalArea = 0;
+
+    _state.zones.forEach(function(zone, idx) {
+        const count = _calpinageOneZone(zone.polygon, idx);
+        totalPanels += count;
+        totalArea += (zone.area || 0);
+    });
+
+    STATE.panelCount    = panelLayer.graphics.length;
+    STATE.polygonArea_m2 = totalArea;
+
+    const hint = document.getElementById('calpinageHint');
+    if (totalPanels > 0) {
+        const nZones = _state.zones.length;
+        const zonesInfo = nZones > 1 ? ` sur ${nZones} zones` : ` — ${totalArea.toFixed(1)} m²`;
+        hint.textContent = `${totalPanels} panneaux placés${zonesInfo}`;
+        hint.classList.remove('text-slate-500', 'text-solar-amber');
+        hint.classList.add('text-green-400');
+    } else {
+        hint.textContent = 'Surface insuffisante pour placer des panneaux';
+        hint.classList.remove('text-green-400');
+        hint.classList.add('text-solar-amber');
+    }
+
+    ['toolAddPanel','toolSelect','toolDelete'].forEach(function(id) {
+        const el = document.getElementById(id);
+        if (el) el.disabled = false;
+    });
+
+    if (totalPanels > 0) suggestEquipment(totalPanels);
+    if (_view3dReady && _state.zones.length > 0) _send3DInit();
+}
+
+function _calpinageOneZone(polygon, zoneIdx) {
+    if (!polygon || !geometryEngineRef || !GraphicRef || !PolygonRef) return 0;
+
     let panelW_m, panelH_m;
     if (STATE.orientation === "portrait") {
         panelW_m = STATE.panelWidth_mm / 1000;
@@ -2366,107 +2449,65 @@ function generateCalpinage() {
         panelH_m = STATE.panelWidth_mm / 1000;
     }
 
-    // Add spacing
     const cellW_m = panelW_m + STATE.spacingH_cm / 100;
     const cellH_m = panelH_m + STATE.spacingV_cm / 100;
 
-    // Get bounding box
     const ext = polygon.extent;
-    const minLon = ext.xmin;
-    const maxLon = ext.xmax;
-    const minLat = ext.ymin;
-    const maxLat = ext.ymax;
-
+    const minLon = ext.xmin, maxLon = ext.xmax;
+    const minLat = ext.ymin, maxLat = ext.ymax;
     const centerLat = (minLat + maxLat) / 2;
 
-    // Convert cell dimensions to degrees
-    const cellW_deg = metersToDegreesLon(cellW_m, centerLat);
-    const cellH_deg = metersToDegreesLat(cellH_m, centerLat);
-
-    // Panel dimension in degrees (without spacing, for drawing)
+    const cellW_deg  = metersToDegreesLon(cellW_m, centerLat);
+    const cellH_deg  = metersToDegreesLat(cellH_m, centerLat);
     const panelW_deg = metersToDegreesLon(panelW_m, centerLat);
     const panelH_deg = metersToDegreesLat(panelH_m, centerLat);
 
-    const panels = [];
-
-    // Dynamic panel cap: enough to cover consumption + 10% safety margin
-    // If no consumption entered, fill the zone freely (up to 5000)
-    const SPECIFIC_YIELD = 1700; // kWh/kWc/year (Dakar)
-    const annualKwh = STATE.annualConsumption || 0;
-    const selfUse   = _state.installType === 'autonome' ? 1.0
-                    : _state.installType === 'hybride'  ? 0.85 : 0.70;
+    const SPECIFIC_YIELD = 1700;
+    const annualKwh   = STATE.annualConsumption || 0;
+    const selfUse     = _state.installType === 'autonome' ? 1.0
+                      : _state.installType === 'hybride'  ? 0.85 : 0.70;
     const panelPwr_kWc = (STATE.panelPower || 545) / 1000;
-    const MAX_PANELS = annualKwh > 0
+    const MAX_PANELS  = annualKwh > 0
         ? Math.ceil((annualKwh / selfUse) / SPECIFIC_YIELD / panelPwr_kWc * 1.1)
         : 5000;
 
-    // Generate grid
+    // Zone colour palette
+    const ZONE_COLORS = [
+        { fill:[14,165,233,0.25],  stroke:[14,165,233,0.8]  },  // blue
+        { fill:[139,92,246,0.25],  stroke:[139,92,246,0.8]  },  // violet
+        { fill:[34,197,94,0.25],   stroke:[34,197,94,0.8]   },  // green
+        { fill:[249,115,22,0.25],  stroke:[249,115,22,0.8]  },  // orange
+        { fill:[236,72,153,0.25],  stroke:[236,72,153,0.8]  },  // pink
+    ];
+    const col = ZONE_COLORS[zoneIdx % ZONE_COLORS.length];
+    const sym = { type:'simple-fill', color:col.fill, outline:{color:col.stroke, width:0.75} };
+
+    const panels = [];
     let lon = minLon + cellW_deg / 2;
     while (lon + panelW_deg / 2 <= maxLon && panels.length < MAX_PANELS) {
         let lat = minLat + cellH_deg / 2;
         while (lat + panelH_deg / 2 <= maxLat && panels.length < MAX_PANELS) {
-            // Create panel rectangle
-            const x1 = lon - panelW_deg / 2;
-            const y1 = lat - panelH_deg / 2;
-            const x2 = lon + panelW_deg / 2;
-            const y2 = lat + panelH_deg / 2;
-
-            const panelRings = [[
-                [x1, y1], [x2, y1], [x2, y2], [x1, y2], [x1, y1]
-            ]];
-
+            const x1 = lon - panelW_deg / 2, y1 = lat - panelH_deg / 2;
+            const x2 = lon + panelW_deg / 2, y2 = lat + panelH_deg / 2;
             const panelPoly = new PolygonRef({
-                rings: panelRings,
+                rings: [[[x1,y1],[x2,y1],[x2,y2],[x1,y2],[x1,y1]]],
                 spatialReference: { wkid: 4326 },
             });
-
-            if (geometryEngineRef.contains(polygon, panelPoly)) {
-                panels.push(panelPoly);
-            }
-
+            if (geometryEngineRef.contains(polygon, panelPoly)) panels.push(panelPoly);
             lat += cellH_deg;
         }
         lon += cellW_deg;
     }
 
-    // Draw panels on map
-    const panelSymbol = {
-        type: "simple-fill",
-        color: [14, 165, 233, 0.25],
-        outline: {
-            color: [14, 165, 233, 0.8],
-            width: 0.75,
-        },
-    };
-
     panels.forEach(function(panelGeom, idx) {
-        const g = new GraphicRef({
+        panelLayer.add(new GraphicRef({
             geometry: panelGeom,
-            symbol: panelSymbol,
-            attributes: { panelIndex: idx + 1 },
-        });
-        panelLayer.add(g);
+            symbol: sym,
+            attributes: { panelIndex: panelLayer.graphics.length + 1, zone: zoneIdx },
+        }));
     });
 
-    // Update state → triggers KPI update
-    STATE.panelCount = panels.length;
-
-    // Auto-suggestion d'équipements basée sur le type d'installation
-    if (panels.length > 0) suggestEquipment(panels.length);
-
-    // Update hint
-    const hint = document.getElementById('calpinageHint');
-    if (panels.length > 0) {
-        const installLabel = { autoconsommation: 'Autoconso.', hybride: 'Hybride', autonome: 'Site isolé' }[_state.installType] || '';
-        const neededInfo = annualKwh > 0 ? ` / ${MAX_PANELS} max besoins` : '';
-        hint.textContent = `${panels.length} panneaux placés (${STATE.polygonArea_m2.toFixed(1)} m²)${neededInfo} — ${installLabel}`;
-        hint.classList.remove('text-slate-500', 'text-solar-amber');
-        hint.classList.add('text-green-400');
-    } else {
-        hint.textContent = 'Surface insuffisante pour placer des panneaux';
-        hint.classList.remove('text-green-400');
-        hint.classList.add('text-solar-amber');
-    }
+    return panels.length;
 }
 
 // =========================================================================
@@ -2528,7 +2569,10 @@ function _send3DInit() {
     const frame = document.getElementById('view3dFrame');
     if (!frame || !frame.contentWindow) return;
 
-    const polygon = _state.polygon;
+    // Use active zone polygon for 3D view (first zone for stability)
+    const polygon = (_state.zones && _state.zones.length > 0)
+        ? _state.zones[_state.activeZoneIdx >= 0 ? _state.activeZoneIdx : 0].polygon
+        : _state.polygon;
     if (!polygon) return;
 
     // Extract first ring from ArcGIS polygon (array of [lon, lat] pairs)
@@ -2667,11 +2711,11 @@ function setMapMode(mode) {
     closePanelPopup();
 
     // Reset toolbar button states
-    ['toolDrawZone','toolAddPanel','toolSelect','toolDelete'].forEach(function(id) {
+    ['toolDrawZone','toolHole','toolAddPanel','toolSelect','toolDelete'].forEach(function(id) {
         const el = document.getElementById(id);
         if (el) el.classList.remove('active');
     });
-    const modeToTool = { 'draw-zone':'toolDrawZone', 'add-panel':'toolAddPanel', 'select':'toolSelect', 'delete':'toolDelete' };
+    const modeToTool = { 'draw-zone':'toolDrawZone', 'draw-hole':'toolHole', 'add-panel':'toolAddPanel', 'select':'toolSelect', 'delete':'toolDelete' };
     const activeId = modeToTool[mode];
     if (activeId) { const el = document.getElementById(activeId); if (el) el.classList.add('active'); }
 
@@ -2681,6 +2725,7 @@ function setMapMode(mode) {
     const txt = document.getElementById('modeBarText');
     const labels = {
         'draw-zone': null,
+        'draw-hole': 'Mode trou — dessinez un polygone pour créer une exclusion dans la zone active',
         'add-panel': 'Mode ajout — cliquez sur la toiture pour placer un panneau',
         'select':    'Mode sélection — cliquez sur un panneau pour le modifier',
         'delete':    'Mode suppression — cliquez sur un panneau pour le supprimer',
@@ -2696,7 +2741,8 @@ function setMapMode(mode) {
 
     // Draw hint update
     const hintMap = {
-        'draw-zone': 'Utilisez l\'outil polygone (barre droite) pour dessiner la toiture',
+        'draw-zone': 'Dessinez des zones toiture — chaque zone s\'ajoute au calpinage total',
+        'draw-hole': 'Dessinez un polygone sur la zone active pour y créer un trou (espace vert, obstacle)',
         'add-panel': 'Cliquez sur la toiture pour ajouter un panneau solaire',
         'select':    'Cliquez sur un panneau pour voir ses infos et le supprimer',
         'delete':    'Cliquez sur un panneau pour le supprimer de l\'installation',
@@ -2706,7 +2752,7 @@ function setMapMode(mode) {
     const drawHint = document.getElementById('drawHint');
     // Show hint only in draw-zone mode (or if no polygon drawn yet)
     if (drawHint) {
-        drawHint.style.display = (mode === 'draw-zone' || !STATE.polygon) ? 'flex' : 'none';
+        drawHint.style.display = (mode === 'draw-zone' || mode === 'draw-hole' || !STATE.polygon) ? 'flex' : 'none';
     }
 
     // Map cursor
@@ -2718,9 +2764,11 @@ function setMapMode(mode) {
 
     // Cancel any active sketch when leaving draw-zone, and prevent the
     // Sketch widget from intercepting map clicks in non-draw-zone modes.
+    _isHoleMode = (mode === 'draw-hole');
     if (sketchWidget) {
         sketchWidget.updateOnGraphicClick = (mode === 'draw-zone');
-        if (mode !== 'draw-zone') sketchWidget.cancel();
+        if (mode !== 'draw-zone' && mode !== 'draw-hole') sketchWidget.cancel();
+        if (mode === 'draw-hole') sketchWidget.create('polygon');
     }
 
     _safeCreateIcons();

@@ -2,7 +2,7 @@ import { useMemo, useRef, useEffect } from 'react'
 import * as THREE from 'three'
 import { ThreeEvent } from '@react-three/fiber'
 import { LocalPolygon, RoofType, Obstacle } from '../types'
-import { buildRoofGeometry } from '../utils/roof'
+import { buildRoofGeometry, RoofFace } from '../utils/roof'
 import { useStore } from '../store/useStore'
 import { getSunPosition, sunToDirection } from '../utils/solar'
 import { OBSTACLE_CFG } from './Obstacles'
@@ -96,21 +96,15 @@ export default function SolarPanels({ localPoly, roofType, pitch, azimuth, wallH
       bboxAngle: bbox.angle,
     })
 
-    // Use actual panel dimensions from 2D to match calpinage grid exactly
-    const wM = panelWidthMm / 1000   // meters
-    const hM = panelHeightMm / 1000  // meters
-    // Portrait: width along X (shorter), height along Z (taller)
-    // Landscape: width along X (longer), height along Z (shorter)
-    const pW = orientation === 'portrait' ? wM : hM  // panel width in 3D X-axis
-    const pH = orientation === 'portrait' ? hM : wM  // panel height in 3D Z-axis
-
-    // Spacing matches 2D calpinage (spacingH = horizontal gap, spacingV = vertical gap)
-    const spacingX = spacingHCm / 100  // meters
-    const spacingZ = spacingVCm / 100  // meters
+    const wM = panelWidthMm / 1000
+    const hM = panelHeightMm / 1000
+    const pW = orientation === 'portrait' ? wM : hM
+    const pH = orientation === 'portrait' ? hM : wM
+    const spacingX = spacingHCm / 100
+    const spacingZ = spacingVCm / 100
 
     const polyXZ: [number, number][] = points.map(([x, y]) => [x, y])
 
-    // Point-in-polygon (ray casting)
     function pointInPoly(px: number, pz: number): boolean {
       if (polyXZ.length < 3) return true
       let inside = false
@@ -118,17 +112,14 @@ export default function SolarPanels({ localPoly, roofType, pitch, azimuth, wallH
       for (let i = 0, j = n - 1; i < n; j = i++) {
         const xi = polyXZ[i][0], yi = polyXZ[i][1]
         const xj = polyXZ[j][0], yj = polyXZ[j][1]
-        if ((yi > pz) !== (yj > pz) && px < ((xj - xi) * (pz - yi)) / (yj - yi) + xi) {
+        if ((yi > pz) !== (yj > pz) && px < ((xj - xi) * (pz - yi)) / (yj - yi) + xi)
           inside = !inside
-        }
       }
       return inside
     }
 
-    // Mirror 2D containment: all 4 panel corners must be inside the polygon
     function panelContained(cx: number, cz: number): boolean {
-      const hw = pW / 2
-      const hh = pH / 2
+      const hw = pW / 2, hh = pH / 2
       return (
         pointInPoly(cx - hw, cz - hh) &&
         pointInPoly(cx + hw, cz - hh) &&
@@ -137,29 +128,55 @@ export default function SolarPanels({ localPoly, roofType, pitch, azimuth, wallH
       )
     }
 
-    const result: PanelPos[] = []
+    // Plane constant D = N·P0 using first face vertex in world space (Y + wallHeight)
+    function getFaceY(face: RoofFace, x: number, z: number): number {
+      if (Math.abs(face.normal.y) < 1e-6) return wallHeight
+      const arr = face.geometry.attributes.position.array as Float32Array
+      const D = face.normal.x * arr[0] + face.normal.y * (arr[1] + wallHeight) + face.normal.z * arr[2]
+      return (D - face.normal.x * x - face.normal.z * z) / face.normal.y
+    }
+
+    // Precompute face bounding boxes (world XZ) for quick face selection
+    const faceBBs = faces.map((face) => {
+      if (!face.geometry.boundingBox) face.geometry.computeBoundingBox()
+      return face.geometry.boundingBox!
+    })
+
+    // Grid aligned to polygon's axis-aligned bbox — mirrors 2D calpinage exactly
+    const minX = points.reduce((m, p) => Math.min(m, p[0]), Infinity)
+    const maxX = points.reduce((m, p) => Math.max(m, p[0]), -Infinity)
+    const minZ = points.reduce((m, p) => Math.min(m, p[1]), Infinity)
+    const maxZ = points.reduce((m, p) => Math.max(m, p[1]), -Infinity)
+
     const stepX = pW + spacingX
     const stepZ = pH + spacingZ
-
-    // Large pool: always generate enough positions for the panel count + ghost preview
     const maxPool = Math.max(panelCount * 3, panelCount + 80)
+    const result: PanelPos[] = []
 
-    for (const face of faces) {
+    for (let x = minX + stepX / 2; x <= maxX - pW / 2 + 1e-6; x += stepX) {
       if (result.length >= maxPool) break
-      const { geometry, normal, tiltDeg, azimuthDeg } = face
-      if (!geometry.boundingBox) geometry.computeBoundingBox()
-      const bb = geometry.boundingBox!
-
-      for (let x = bb.min.x + pW / 2; x <= bb.max.x - pW / 2; x += stepX) {
-        for (let z = bb.min.z + pH / 2; z <= bb.max.z - pH / 2; z += stepZ) {
-          if (result.length >= maxPool) break
-          if (!panelContained(x, z)) continue
-          const y = normal.y > 1e-6
-            ? wallHeight - (normal.x * x + normal.z * z) / normal.y
-            : wallHeight
-          result.push({ x, y: y + PANEL_THICKNESS / 2, z, tilt: tiltDeg, az: azimuthDeg, normal })
-        }
+      for (let z = minZ + stepZ / 2; z <= maxZ - pH / 2 + 1e-6; z += stepZ) {
         if (result.length >= maxPool) break
+        if (!panelContained(x, z)) continue
+
+        // Select face: only faces whose XZ bbox contains this point; pick highest Y
+        let bestFace: RoofFace | null = null
+        let bestY = -Infinity
+        for (let fi = 0; fi < faces.length; fi++) {
+          const face = faces[fi]
+          if (Math.abs(face.normal.y) < 0.01) continue
+          const bb = faceBBs[fi]
+          if (x < bb.min.x - 0.05 || x > bb.max.x + 0.05) continue
+          if (z < bb.min.z - 0.05 || z > bb.max.z + 0.05) continue
+          const y = getFaceY(face, x, z)
+          if (y >= wallHeight - 0.05 && y > bestY) { bestY = y; bestFace = face }
+        }
+        if (!bestFace) continue
+
+        result.push({
+          x, y: bestY + PANEL_THICKNESS / 2, z,
+          tilt: bestFace.tiltDeg, az: bestFace.azimuthDeg, normal: bestFace.normal,
+        })
       }
     }
 

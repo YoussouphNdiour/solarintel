@@ -22,8 +22,22 @@ interface Props {
 
 export default function Roof({ localPoly, roofType, pitch, azimuth, wallHeight }: Props) {
   const { roofMaterial } = useStore()
+  const [c0, c1] = MATERIAL_COLORS[roofMaterial] ?? MATERIAL_COLORS['tuile-grise']
+  const isMetallic = roofMaterial === 'zinc' || roofMaterial === 'bac-acier'
 
+  // Flat roof: use actual polygon shape so it doesn't extend beyond the drawn zone
+  const flatGeo = useMemo(() => {
+    if (roofType !== 'flat' || localPoly.points.length < 3) return null
+    // Negate Y so after rotateX(-π/2) world Z = +North (same as Building.tsx fix)
+    const shape = new THREE.Shape(localPoly.points.map(([x, y]) => new THREE.Vector2(x, -y)))
+    const geo = new THREE.ShapeGeometry(shape)
+    geo.rotateX(-Math.PI / 2)
+    return geo
+  }, [localPoly, roofType])
+
+  // Tilted roofs: bbox-based geometry
   const faces = useMemo(() => {
+    if (roofType === 'flat') return []
     const { bbox } = localPoly
     return buildRoofGeometry({
       type: roofType,
@@ -36,8 +50,20 @@ export default function Roof({ localPoly, roofType, pitch, azimuth, wallHeight }
     })
   }, [localPoly, roofType, pitch, azimuth, wallHeight])
 
-  const [c0, c1] = MATERIAL_COLORS[roofMaterial] ?? MATERIAL_COLORS['tuile-grise']
-  const isMetallic = roofMaterial === 'zinc' || roofMaterial === 'bac-acier'
+  if (roofType === 'flat' && flatGeo) {
+    return (
+      <group position={[0, wallHeight, 0]}>
+        <mesh geometry={flatGeo} castShadow receiveShadow>
+          <meshStandardMaterial
+            color={c0}
+            roughness={isMetallic ? 0.3 : 0.85}
+            metalness={isMetallic ? 0.6 : 0.05}
+            side={THREE.DoubleSide}
+          />
+        </mesh>
+      </group>
+    )
+  }
 
   return (
     <group position={[0, wallHeight, 0]}>
