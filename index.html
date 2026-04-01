@@ -709,6 +709,14 @@
                         <p id="kpiLCOE" class="text-xl font-mono font-bold text-slate-200">— <span class="text-sm font-normal text-slate-400">XOF/kWh</span></p>
                     </div>
                 </div>
+                <div id="roofGeomInfo" class="mt-3 hidden">
+                    <div class="flex items-center justify-between text-xs bg-[#1e293b] rounded-lg px-3 py-2">
+                        <span class="text-slate-400 flex items-center gap-1">
+                            <i data-lucide="rotate-3d" class="w-3 h-3"></i> Inclinaison / Azimut (3D)
+                        </span>
+                        <span id="kpiRoofGeom" class="font-mono text-solar-blue">—</span>
+                    </div>
+                </div>
                 <div id="surfaceInfo" class="mt-3 text-xs text-slate-500 text-center hidden">
                     Surface toiture : <span id="surfaceValue" class="font-mono text-slate-300">—</span> m²
                 </div>
@@ -2303,6 +2311,10 @@ require([
                             color: [220, 38, 38, 0.25],
                             outline: { color: [220, 38, 38, 0.9], width: 1.5, style: 'dash' },
                         };
+                        // Push to undo history so "Annuler" can remove this hole
+                        panelHistory.push({ action: 'add-hole', graphic: event.graphic,
+                            zoneIdx: _state.activeZoneIdx, holeIdx: holeIdx, holeArea: holeArea });
+                        _setUndoEnabled(true);
                     }
                     generateCalpinage();
                     setMapMode('draw-zone');
@@ -2456,13 +2468,16 @@ function deleteHole(graphic) {
     const zone = _state.zones[zoneIdx];
     if (!zone || !zone.holes) return;
 
-    // Restore the hole area to zone area
-    if (zone.holes[holeIdx]) {
+    // Compute hole area before removing (for undo restore)
+    let holeArea = 0;
+    const holePolygon = zone.holes[holeIdx];
+    if (holePolygon) {
         const holeWebMerc = webMercatorUtils.geographicToWebMercator
-            ? webMercatorUtils.geographicToWebMercator(zone.holes[holeIdx])
+            ? webMercatorUtils.geographicToWebMercator(holePolygon)
             : null;
         if (holeWebMerc && geometryEngineRef) {
-            zone.area = (zone.area || 0) + Math.abs(geometryEngineRef.geodesicArea(holeWebMerc, "square-meters"));
+            holeArea = Math.abs(geometryEngineRef.geodesicArea(holeWebMerc, "square-meters"));
+            zone.area = (zone.area || 0) + holeArea;
         }
     }
 
@@ -2479,6 +2494,11 @@ function deleteHole(graphic) {
             }
         });
     }
+
+    // Push to undo history before removing
+    panelHistory.push({ action: 'delete-hole', graphic: graphic,
+        zoneIdx: zoneIdx, holeIdx: holeIdx, holePolygon: holePolygon, holeArea: holeArea });
+    _setUndoEnabled(true);
 
     // Remove graphic from sketch layer without triggering zone-wipe delete event
     _suppressDeleteHandler = true;
@@ -2725,6 +2745,14 @@ window.addEventListener('message', function(e) {
     if (e.data.type === 'TILT_AZIMUTH') {
         if (typeof e.data.tilt === 'number')    _state.roofTilt    = e.data.tilt;
         if (typeof e.data.azimuth === 'number') _state.roofAzimuth = e.data.azimuth;
+        // Update roof geometry KPI badge
+        const geomEl = document.getElementById('kpiRoofGeom');
+        const geomCard = document.getElementById('roofGeomInfo');
+        if (geomEl && _state.roofTilt !== null) {
+            geomEl.textContent = _state.roofTilt.toFixed(0) + '° / ' + _state.roofAzimuth.toFixed(0) + '°';
+            if (geomCard) geomCard.classList.remove('hidden');
+            _safeCreateIcons();
+        }
         // Retrigger simulation with updated tilt/azimuth
         if (STATE.panelCount > 0) _doCallBackend();
     }
@@ -3008,14 +3036,50 @@ function closePanelPopup() {
 function undoLastPanel() {
     if (panelHistory.length === 0) return;
     const last = panelHistory.pop();
+
     if (last.action === 'add') {
         last.graphics.forEach(function(g) { panelLayer.remove(g); });
     } else if (last.action === 'delete') {
         last.graphics.forEach(function(g) { panelLayer.add(g); });
+    } else if (last.action === 'add-hole') {
+        // Undo hole addition: remove from zone.holes and from sketch layer
+        const zone = _state.zones[last.zoneIdx];
+        if (zone && zone.holes) {
+            zone.holes.splice(last.holeIdx, 1);
+            zone.area = (zone.area || 0) + (last.holeArea || 0);
+            STATE.polygonArea_m2 = _state.zones.reduce(function(s, z) { return s + (z.area || 0); }, 0);
+            // Update sibling _holeIdx values
+            if (sketchLayer) {
+                sketchLayer.graphics.forEach(function(g) {
+                    if (g.attributes && g.attributes._isHole &&
+                        g.attributes._zoneIdx === last.zoneIdx &&
+                        g.attributes._holeIdx > last.holeIdx) {
+                        g.attributes = Object.assign({}, g.attributes, { _holeIdx: g.attributes._holeIdx - 1 });
+                    }
+                });
+            }
+        }
+        _suppressDeleteHandler = true;
+        if (sketchLayer) sketchLayer.remove(last.graphic);
+        _suppressDeleteHandler = false;
+        generateCalpinage();
+    } else if (last.action === 'delete-hole') {
+        // Undo hole deletion: re-add to zone.holes and sketch layer
+        const zone = _state.zones[last.zoneIdx];
+        if (zone) {
+            if (!zone.holes) zone.holes = [];
+            zone.holes.splice(last.holeIdx, 0, last.holePolygon);
+            zone.area = Math.max(0, (zone.area || 0) - (last.holeArea || 0));
+            STATE.polygonArea_m2 = _state.zones.reduce(function(s, z) { return s + (z.area || 0); }, 0);
+            last.graphic.attributes = Object.assign({}, last.graphic.attributes, { _holeIdx: last.holeIdx });
+            if (sketchLayer) sketchLayer.add(last.graphic);
+        }
+        generateCalpinage();
     }
+
     _state.panelCount = panelLayer.graphics.length;
     updatePanelBadge();
-    updateKPIs();
+    if (last.action === 'add' || last.action === 'delete') updateKPIs();
     _setUndoEnabled(panelHistory.length > 0);
     document.getElementById('toolClear').disabled = (panelLayer.graphics.length === 0);
     closePanelPopup();
