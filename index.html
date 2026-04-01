@@ -2272,7 +2272,7 @@ require([
                 if (h) h.style.display = 'none';
             }
             if (event.state === "complete") {
-                handlePolygonUpdate(event.graphic.geometry);
+                handlePolygonUpdate(event.graphic.geometry, false);
                 // Enable add/select/delete tools
                 ['toolAddPanel','toolSelect','toolDelete'].forEach(function(id) {
                     const el = document.getElementById(id);
@@ -2292,10 +2292,10 @@ require([
                 return;
             }
             if (event.state === "complete" && event.graphics.length > 0) {
-                handlePolygonUpdate(event.graphics[0].geometry);
+                handlePolygonUpdate(event.graphics[0].geometry, true);
             }
             if (event.state === "active" && event.toolEventInfo && event.toolEventInfo.type === "reshape-stop") {
-                handlePolygonUpdate(event.graphics[0].geometry);
+                handlePolygonUpdate(event.graphics[0].geometry, true);
             }
         });
 
@@ -2343,7 +2343,7 @@ require([
         mapView.on("drag", function() { closePanelPopup(); });
     });
 
-    function handlePolygonUpdate(polygon) {
+    function handlePolygonUpdate(polygon, isUpdate) {
         const geoPolygon = webMercatorUtils.webMercatorToGeographic(polygon);
         const area    = Math.abs(geometryEngine.geodesicArea(polygon, "square-meters"));
         const centroid = geoPolygon.centroid;
@@ -2360,9 +2360,31 @@ require([
                     activeZone.area = Math.abs(geometryEngine.geodesicArea(diffWebMerc, "square-meters"));
                 }
             }
+            // Remove the hole graphic from the sketch layer so it can't be
+            // accidentally re-activated and treated as a new zone.
+            if (sketchWidget && sketchWidget.layer) {
+                const layerGraphics = sketchWidget.layer.graphics;
+                if (layerGraphics.length > 0) {
+                    sketchWidget.layer.remove(layerGraphics.getItemAt(layerGraphics.length - 1));
+                }
+            }
             generateCalpinage();
             setMapMode('draw-zone');
             return;
+        }
+
+        if (isUpdate) {
+            // Reshape of an existing zone — update in place, never add a new zone
+            const zoneIdx = _state.activeZoneIdx >= 0 ? _state.activeZoneIdx : 0;
+            if (_state.zones[zoneIdx]) {
+                _state.zones[zoneIdx].polygon  = geoPolygon;
+                _state.zones[zoneIdx].area     = area;
+                _state.zones[zoneIdx].centroid = { latitude: centroid.latitude, longitude: centroid.longitude };
+                if (zoneIdx === 0) STATE.polygon = geoPolygon;
+                STATE.polygonArea_m2 = _state.zones.reduce(function(s, z) { return s + (z.area || 0); }, 0);
+            }
+            generateCalpinage();
+            return; // no goTo — user is already looking at the zone
         }
 
         // New zone — add to zones array
@@ -2386,8 +2408,7 @@ require([
         });
 
         generateCalpinage();
-
-        mapView.goTo(polygon.extent.expand(2.5));
+        mapView.goTo(polygon.extent.expand(1.8));
     }
 });
 
