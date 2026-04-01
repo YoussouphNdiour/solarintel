@@ -140,6 +140,7 @@ class ReportRequest(BaseModel):
     spacing_h_cm: float = 2               # espacement horizontal entre panneaux (cm)
     spacing_v_cm: float = 5               # espacement vertical entre rangées (cm)
     azimuth_deg: float = 180              # azimut toiture (° — 180 = plein sud)
+    tilt_deg: Optional[float] = None     # inclinaison panneaux (None → utilise latitude comme proxy)
 
 
 # ---------------------------------------------------------------------------
@@ -465,7 +466,7 @@ def _build_pdf(req: ReportRequest) -> bytes:
         cell_h = ph + req.spacing_v_cm / 100
 
         # Espacement anti-ombrage (solstice d'hiver, élévation soleil conservatrice 25°)
-        tilt_deg = round(req.latitude, 1) if req.latitude > 0 else 15.0
+        tilt_deg = req.tilt_deg if req.tilt_deg is not None else (round(req.latitude, 1) if req.latitude > 0 else 15.0)
         tilt_rad = _math.radians(tilt_deg)
         elev_rad = _math.radians(25)
         row_spacing = ph * (_math.cos(tilt_rad) + _math.sin(tilt_rad) / _math.tan(elev_rad))

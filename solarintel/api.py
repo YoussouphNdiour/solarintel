@@ -110,6 +110,9 @@ class SimulateRequest(BaseModel):
     # Senelec — grille tarifaire officielle
     senelec_tariff: str | None = None  # DPP, DMP, PPP, PMP ou *_WOYOFAL
     annual_consumption_kwh: float | None = None  # pour calcul tranches
+    # Toiture (depuis vue 3D ou défaut latitude)
+    surface_tilt: float | None = None   # inclinaison panneaux en degrés (None → utilise latitude)
+    surface_azimuth: float = 180        # azimut (0=N, 90=E, 180=S, 270=W)
 
 
 class SimulateResponse(BaseModel):
@@ -193,8 +196,8 @@ def simulate(req: SimulateRequest):
     temp_params = TEMPERATURE_MODEL_PARAMETERS["sapm"]["open_rack_glass_glass"]
 
     system = PVSystem(
-        surface_tilt=req.latitude,
-        surface_azimuth=180,
+        surface_tilt=req.surface_tilt if req.surface_tilt is not None else req.latitude,
+        surface_azimuth=req.surface_azimuth,
         module_parameters={
             "pdc0": req.panel_power_wc,
             "gamma_pdc": req.temp_coeff_pmax / 100,

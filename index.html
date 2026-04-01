@@ -1413,6 +1413,8 @@ const _state = {
     spacingH_cm: 2,
     spacingV_cm: 5,
     orientation: "portrait",
+    roofTilt: null,        // degrés inclinaison reçus de la vue 3D (null → pvlib utilise latitude)
+    roofAzimuth: 180,      // azimut toiture reçu de la vue 3D (0=N, 180=S)
     installType: "autoconsommation",
     senelec_tariff: null,
     panelCount: 0,
@@ -2001,7 +2003,8 @@ async function generateReport() {
         panel_orientation:  STATE.orientation     || 'portrait',
         spacing_h_cm:       STATE.spacingH_cm     || 2,
         spacing_v_cm:       STATE.spacingV_cm     || 5,
-        azimuth_deg:        180,
+        azimuth_deg:        _state.roofAzimuth || 180,
+        tilt_deg:           _state.roofTilt,
     };
 
     try {
@@ -2130,6 +2133,8 @@ async function _doCallBackend() {
         panel_brand: STATE.panelBrand,
         panel_model: STATE.panelModel,
         temp_coeff_pmax: STATE.tempCoeff,
+        surface_tilt: _state.roofTilt,
+        surface_azimuth: _state.roofAzimuth || 180,
     };
 
     try {
@@ -2718,7 +2723,10 @@ window.addEventListener('message', function(e) {
 
     // Sync tilt/azimuth from 3D view back to simulation params
     if (e.data.type === 'TILT_AZIMUTH') {
-        console.log('[3D→2D] tilt:', e.data.tilt, 'azimuth:', e.data.azimuth);
+        if (typeof e.data.tilt === 'number')    _state.roofTilt    = e.data.tilt;
+        if (typeof e.data.azimuth === 'number') _state.roofAzimuth = e.data.azimuth;
+        // Retrigger simulation with updated tilt/azimuth
+        if (STATE.panelCount > 0) _doCallBackend();
     }
 
     // Panel added in 3D view → update 2D panel count
