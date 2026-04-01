@@ -1529,9 +1529,9 @@ function updateKPIs() {
     const selfUseRate = _state.installType === 'autonome' ? 1.0
                       : _state.installType === 'hybride'  ? 0.85
                       : 0.70;
-    const annual = STATE.annualConsumption || 1;
-    const usedEnergy = Math.min(production * selfUseRate, annual);
-    STATE.coverageRate = Math.min(100, Math.round(usedEnergy / annual * 100));
+    const annual = STATE.annualConsumption || 0;
+    const usedEnergy = annual > 0 ? Math.min(production * selfUseRate, annual) : production * selfUseRate;
+    STATE.coverageRate = annual > 0 ? Math.min(100, Math.round(usedEnergy / annual * 100)) : 0;
 
     // ── Économies annuelles ────────────────────────────────────────────
     STATE.annualSavings = Math.round(usedEnergy * STATE.electricity_price_kwh);
@@ -2147,14 +2147,22 @@ async function _doCallBackend() {
         const econ = data.economics;
 
         _state.annualProduction_kWh = Math.round(sim.annual_production_kwh);
-        const annual = STATE.annualConsumption || 1;
-        _state.coverageRate = Math.min(100, Math.round(sim.annual_production_kwh / annual * 100));
+        const annual = STATE.annualConsumption || 0;
+        const _selfUseRate = _state.installType === 'autonome' ? 1.0
+                           : _state.installType === 'hybride'  ? 0.85
+                           : 0.70;
+        const _usedEnergy = annual > 0
+            ? Math.min(sim.annual_production_kwh * _selfUseRate, annual)
+            : sim.annual_production_kwh * _selfUseRate;
+        _state.coverageRate = annual > 0
+            ? Math.min(100, Math.round(_usedEnergy / annual * 100))
+            : 0;
         _state.annualSavings = Math.round(econ.annual_savings_year1_xof);
         _state.paybackYears = econ.payback_years;
         _state.lcoe = econ.lcoe_xof_kwh;
 
         setKPI('kpiProduction', numberFmt(Math.round(sim.annual_production_kwh)), 'kWh/an');
-        setKPI('kpiCoverage', _state.coverageRate, '%');
+        setKPI('kpiCoverage', _state.coverageRate > 0 ? _state.coverageRate : '—', '%');
         setKPI('kpiSavings', numberFmt(_state.annualSavings), 'XOF');
         setKPI('kpiPayback', econ.payback_years, 'ans');
         setKPI('kpiLCOE', econ.lcoe_xof_kwh, 'XOF/kWh');
