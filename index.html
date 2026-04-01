@@ -2272,6 +2272,25 @@ require([
                 if (h) h.style.display = 'none';
             }
             if (event.state === "complete") {
+                if (_isHoleMode) {
+                    // Process hole directly here so we have access to event.graphic
+                    _isHoleMode = false;
+                    const geoHole = webMercatorUtils.webMercatorToGeographic(event.graphic.geometry);
+                    if (_state.activeZoneIdx >= 0 && _state.zones[_state.activeZoneIdx]) {
+                        const activeZone = _state.zones[_state.activeZoneIdx];
+                        const diff = geometryEngine.difference(activeZone.polygon, geoHole);
+                        if (diff) {
+                            activeZone.polygon = diff;
+                            const diffWebMerc = webMercatorUtils.geographicToWebMercator(diff);
+                            activeZone.area = Math.abs(geometryEngine.geodesicArea(diffWebMerc, "square-meters"));
+                        }
+                    }
+                    // Mark graphic so the update handler never treats it as a zone
+                    event.graphic.attributes = Object.assign({}, event.graphic.attributes || {}, { _isHole: true });
+                    generateCalpinage();
+                    setMapMode('draw-zone');
+                    return;
+                }
                 handlePolygonUpdate(event.graphic.geometry, false);
                 // Enable add/select/delete tools
                 ['toolAddPanel','toolSelect','toolDelete'].forEach(function(id) {
@@ -2289,6 +2308,11 @@ require([
                 if (event.state === 'start' || event.state === 'active') {
                     sketchWidget.cancel();
                 }
+                return;
+            }
+            // Skip hole graphics — they must not be treated as zones
+            if (event.graphics.length > 0 && event.graphics[0].attributes && event.graphics[0].attributes._isHole) {
+                if (event.state === 'start' || event.state === 'active') sketchWidget.cancel();
                 return;
             }
             if (event.state === "complete" && event.graphics.length > 0) {
@@ -2348,30 +2372,8 @@ require([
         const area    = Math.abs(geometryEngine.geodesicArea(polygon, "square-meters"));
         const centroid = geoPolygon.centroid;
 
-        if (_isHoleMode) {
-            // Subtract hole from the active zone
-            _isHoleMode = false;
-            if (_state.activeZoneIdx >= 0 && _state.zones[_state.activeZoneIdx]) {
-                const activeZone = _state.zones[_state.activeZoneIdx];
-                const diff = geometryEngine.difference(activeZone.polygon, geoPolygon);
-                if (diff) {
-                    activeZone.polygon = diff;
-                    const diffWebMerc = webMercatorUtils.geographicToWebMercator(diff);
-                    activeZone.area = Math.abs(geometryEngine.geodesicArea(diffWebMerc, "square-meters"));
-                }
-            }
-            // Remove the hole graphic from the sketch layer so it can't be
-            // accidentally re-activated and treated as a new zone.
-            if (sketchWidget && sketchWidget.layer) {
-                const layerGraphics = sketchWidget.layer.graphics;
-                if (layerGraphics.length > 0) {
-                    sketchWidget.layer.remove(layerGraphics.getItemAt(layerGraphics.length - 1));
-                }
-            }
-            generateCalpinage();
-            setMapMode('draw-zone');
-            return;
-        }
+        // _isHoleMode is now handled directly in the "create" event handler
+        // (hole processing moved there to have access to event.graphic for marking).
 
         if (isUpdate) {
             // Reshape of an existing zone — update in place, never add a new zone
