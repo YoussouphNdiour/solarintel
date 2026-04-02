@@ -174,7 +174,9 @@ export default function SolarPanels({ localPoly, roofType, pitch, azimuth, wallH
         if (!bestFace) continue
 
         result.push({
-          x, y: bestY + PANEL_THICKNESS / 2, z,
+          x: x + bestFace.normal.x * PANEL_THICKNESS / 2,
+          y: bestY + bestFace.normal.y * PANEL_THICKNESS / 2,
+          z: z + bestFace.normal.z * PANEL_THICKNESS / 2,
           tilt: bestFace.tiltDeg, az: bestFace.azimuthDeg, normal: bestFace.normal,
         })
       }

@@ -1535,16 +1535,18 @@ function updateKPIs() {
     STATE.annualProduction_kWh = Math.round(production);
 
     // ── Taux de couverture ─────────────────────────────────────────────
-    // Autoconsommation réseau : on estime 70 % d'autoconsommation directe
-    // Hybride (batterie) : 85 % ; Site isolé : 100 % (toute la prod est utilisée)
+    // Taux de couverture = part de la consommation couverte par la production solaire
+    // (indépendant du taux d'autoconsommation — se base sur la production brute)
+    const annual = STATE.annualConsumption || 0;
+    STATE.coverageRate = annual > 0 ? Math.min(100, Math.round(production / annual * 100)) : 0;
+
+    // ── Économies annuelles ────────────────────────────────────────────
+    // Autoconsommation réseau : 70 % de la prod effectivement auto-consommée
+    // Hybride (batterie) : 85 % ; Site isolé : 100 %
     const selfUseRate = _state.installType === 'autonome' ? 1.0
                       : _state.installType === 'hybride'  ? 0.85
                       : 0.70;
-    const annual = STATE.annualConsumption || 0;
     const usedEnergy = annual > 0 ? Math.min(production * selfUseRate, annual) : production * selfUseRate;
-    STATE.coverageRate = annual > 0 ? Math.min(100, Math.round(usedEnergy / annual * 100)) : 0;
-
-    // ── Économies annuelles ────────────────────────────────────────────
     STATE.annualSavings = Math.round(usedEnergy * STATE.electricity_price_kwh);
 
     // ── CAPEX total (panneaux + onduleur + batterie + frais) ───────────
@@ -2162,14 +2164,8 @@ async function _doCallBackend() {
 
         _state.annualProduction_kWh = Math.round(sim.annual_production_kwh);
         const annual = STATE.annualConsumption || 0;
-        const _selfUseRate = _state.installType === 'autonome' ? 1.0
-                           : _state.installType === 'hybride'  ? 0.85
-                           : 0.70;
-        const _usedEnergy = annual > 0
-            ? Math.min(sim.annual_production_kwh * _selfUseRate, annual)
-            : sim.annual_production_kwh * _selfUseRate;
         _state.coverageRate = annual > 0
-            ? Math.min(100, Math.round(_usedEnergy / annual * 100))
+            ? Math.min(100, Math.round(sim.annual_production_kwh / annual * 100))
             : 0;
         _state.annualSavings = Math.round(econ.annual_savings_year1_xof);
         _state.paybackYears = econ.payback_years;
