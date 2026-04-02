@@ -16,13 +16,21 @@ export function polygonToLocal(rings: [number, number][]): LocalPolygon {
     }
   }
 
-  // Compute geographic centroid
-  const centLon = rings.reduce((s, p) => s + p[0], 0) / rings.length
-  const centLat = rings.reduce((s, p) => s + p[1], 0) / rings.length
+  // Remove closing vertex (ArcGIS rings always end with a duplicate of rings[0])
+  const open =
+    rings.length > 1 &&
+    rings[0][0] === rings[rings.length - 1][0] &&
+    rings[0][1] === rings[rings.length - 1][1]
+      ? rings.slice(0, -1)
+      : rings
+
+  // Compute geographic centroid on unique vertices only
+  const centLon = open.reduce((s, p) => s + p[0], 0) / open.length
+  const centLat = open.reduce((s, p) => s + p[1], 0) / open.length
   const lat0 = (centLat * Math.PI) / 180
 
-  // Project to local XY (meters)
-  const points: [number, number][] = rings.map(([lon, lat]) => [
+  // Project unique vertices to local XY (meters)
+  const points: [number, number][] = open.map(([lon, lat]) => [
     ((lon - centLon) * Math.cos(lat0) * EARTH_RADIUS * Math.PI) / 180,
     ((lat - centLat) * EARTH_RADIUS * Math.PI) / 180,
   ])
