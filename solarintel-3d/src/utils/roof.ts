@@ -111,9 +111,11 @@ function buildShedRoof(w: number, h: number, angle: number, rise: number, pitchD
     ...rot[0], ...rot[2], ...rot[3],
   ]
 
-  // Normal of shed face
-  const slopeNorm = new THREE.Vector3(0, Math.cos(pitchDeg * Math.PI / 180), -Math.sin(pitchDeg * Math.PI / 180))
-  slopeNorm.applyAxisAngle(new THREE.Vector3(0, 1, 0), angle)
+  // Normal of shed face — rotate using same convention as rotateXZ (not applyAxisAngle)
+  const cosP = Math.cos(pitchDeg * Math.PI / 180)
+  const sinP = Math.sin(pitchDeg * Math.PI / 180)
+  const [snx, snz] = rotateXZ(0, -sinP, angle)
+  const slopeNorm = new THREE.Vector3(snx, cosP, snz)
 
   const n = [slopeNorm.x, slopeNorm.y, slopeNorm.z]
   const normals = Array(6).fill(n).flat()
@@ -156,8 +158,10 @@ function buildGableRoof(w: number, h: number, angle: number, rise: number, pitch
       ...rot[0], ...rot[1], ...rot[2],
       ...rot[0], ...rot[2], ...rot[3],
     ]
-    const slopeNorm = new THREE.Vector3(0, Math.cos(pitchDeg * Math.PI / 180), nSign * Math.sin(pitchDeg * Math.PI / 180))
-    slopeNorm.applyAxisAngle(new THREE.Vector3(0, 1, 0), angle)
+    const cosP2 = Math.cos(pitchDeg * Math.PI / 180)
+    const sinP2 = Math.sin(pitchDeg * Math.PI / 180)
+    const [gnx, gnz] = rotateXZ(0, nSign * sinP2, angle)
+    const slopeNorm = new THREE.Vector3(gnx, cosP2, gnz)
     const n = [slopeNorm.x, slopeNorm.y, slopeNorm.z]
     const normals = Array(6).fill(n).flat()
     const uvs = [0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1]
@@ -210,21 +214,24 @@ function buildHipRoof(w: number, h: number, angle: number, rise: number, pitchDe
     }
   }
 
-  // Front face (trapezoid): [-hw,0,-hh], [hw,0,-hh], [rw,ridgeH,0], [-rw,ridgeH,0]
-  const frontNorm = new THREE.Vector3(0, Math.cos(pitchDeg * Math.PI / 180), -Math.sin(pitchDeg * Math.PI / 180))
-  frontNorm.applyAxisAngle(new THREE.Vector3(0, 1, 0), angle)
+  const hcosP = Math.cos(pitchDeg * Math.PI / 180)
+  const hsinP = Math.sin(pitchDeg * Math.PI / 180)
 
-  // Back face (trapezoid): [hw,0,hh], [-hw,0,hh], [-rw,ridgeH,0], [rw,ridgeH,0]
-  const backNorm = new THREE.Vector3(0, Math.cos(pitchDeg * Math.PI / 180), Math.sin(pitchDeg * Math.PI / 180))
-  backNorm.applyAxisAngle(new THREE.Vector3(0, 1, 0), angle)
+  // Front face — normal rotated via rotateXZ (same convention as vertices)
+  const [fnx, fnz] = rotateXZ(0, -hsinP, angle)
+  const frontNorm = new THREE.Vector3(fnx, hcosP, fnz)
 
-  // Left triangle: [-hw,0,-hh], [-hw,0,hh], [-rw,ridgeH,0]
-  const leftNorm = new THREE.Vector3(-Math.sin(pitchDeg * Math.PI / 180), Math.cos(pitchDeg * Math.PI / 180), 0)
-  leftNorm.applyAxisAngle(new THREE.Vector3(0, 1, 0), angle)
+  // Back face
+  const [bnx, bnz] = rotateXZ(0, hsinP, angle)
+  const backNorm = new THREE.Vector3(bnx, hcosP, bnz)
 
-  // Right triangle: [hw,0,hh], [hw,0,-hh], [rw,ridgeH,0]
-  const rightNorm = new THREE.Vector3(Math.sin(pitchDeg * Math.PI / 180), Math.cos(pitchDeg * Math.PI / 180), 0)
-  rightNorm.applyAxisAngle(new THREE.Vector3(0, 1, 0), angle)
+  // Left triangle
+  const [lnx, lnz] = rotateXZ(-hsinP, 0, angle)
+  const leftNorm = new THREE.Vector3(lnx, hcosP, lnz)
+
+  // Right triangle
+  const [rnx, rnz] = rotateXZ(hsinP, 0, angle)
+  const rightNorm = new THREE.Vector3(rnx, hcosP, rnz)
 
   return [
     buildHipFace([[-hw,0,-hh], [hw,0,-hh], [rw,ridgeH,0], [-rw,ridgeH,0]], frontNorm, pitchDeg, roofAzimuth),
