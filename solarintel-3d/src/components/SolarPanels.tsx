@@ -182,6 +182,7 @@ export default function SolarPanels({ localPoly, roofType, pitch, azimuth, wallH
       }
     }
 
+    console.log('[SolarPanels] total panels:', result.length, 'sample Y:', result.slice(0,3).map(p => +p.y.toFixed(3)))
     return result
   }, [localPoly, roofType, pitch, azimuth, wallHeight, panelCount, panelWidthMm, panelHeightMm, orientation, spacingHCm, spacingVCm])
 
