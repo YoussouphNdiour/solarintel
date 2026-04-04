@@ -136,11 +136,35 @@ export default function SolarPanels({ localPoly, roofType, pitch, azimuth, wallH
       return (D - face.normal.x * x - face.normal.z * z) / face.normal.y
     }
 
-    // Precompute face bounding boxes (world XZ) for quick face selection
+    // Precompute face bounding boxes (fast early rejection)
     const faceBBs = faces.map((face) => {
       if (!face.geometry.boundingBox) face.geometry.computeBoundingBox()
       return face.geometry.boundingBox!
     })
+
+    // Precompute face XZ polygons for precise containment (handles trapezoids + triangles)
+    const facePolysXZ = faces.map((face): [number, number][] => {
+      const arr = face.geometry.attributes.position.array as Float32Array
+      if (arr.length === 9) {
+        // Triangle (3 verts)
+        return [[arr[0], arr[2]], [arr[3], arr[5]], [arr[6], arr[8]]]
+      }
+      // Quad stored as 2 triangles: [v0,v1,v2, v0,v2,v3] → unique verts at slots 0,1,2,5
+      return [[arr[0], arr[2]], [arr[3], arr[5]], [arr[6], arr[8]], [arr[15], arr[17]]]
+    })
+
+    // Point-in-polygon check in XZ space (ray casting)
+    function inFaceXZ(px: number, pz: number, poly: [number, number][]): boolean {
+      let inside = false
+      const n = poly.length
+      for (let i = 0, j = n - 1; i < n; j = i++) {
+        const xi = poly[i][0], zi = poly[i][1]
+        const xj = poly[j][0], zj = poly[j][1]
+        if ((zi > pz) !== (zj > pz) && px < ((xj - xi) * (pz - zi) / (zj - zi) + xi))
+          inside = !inside
+      }
+      return inside
+    }
 
     // Grid aligned to polygon's axis-aligned bbox — mirrors 2D calpinage exactly
     const minX = points.reduce((m, p) => Math.min(m, p[0]), Infinity)
@@ -153,13 +177,17 @@ export default function SolarPanels({ localPoly, roofType, pitch, azimuth, wallH
     const maxPool = Math.max(panelCount * 3, panelCount + 80)
     const result: PanelPos[] = []
 
+    const hx = pW / 2
+    const hz = pH / 2
+
     for (let x = minX + stepX / 2; x <= maxX - pW / 2 + 1e-6; x += stepX) {
       if (result.length >= maxPool) break
       for (let z = minZ + stepZ / 2; z <= maxZ - pH / 2 + 1e-6; z += stepZ) {
         if (result.length >= maxPool) break
         if (!panelContained(x, z)) continue
 
-        // Select face: panel center AND full footprint must be within face XZ bbox
+        // Select face: all 4 footprint corners must lie inside the face polygon.
+        // This prevents straddling the ridge (gable) and wrong-face assignment (hip).
         let bestFace: RoofFace | null = null
         let bestY = -Infinity
         for (let fi = 0; fi < faces.length; fi++) {
@@ -167,12 +195,15 @@ export default function SolarPanels({ localPoly, roofType, pitch, azimuth, wallH
           if (Math.abs(face.normal.y) < 0.01) continue
           const bb = faceBBs[fi]
           const tol = 0.05
-          // Center check
+          // Fast bbox rejection on center
           if (x < bb.min.x - tol || x > bb.max.x + tol) continue
           if (z < bb.min.z - tol || z > bb.max.z + tol) continue
-          // Footprint check — prevents panels from straddling the ridge or hip edges
-          if (x - pW / 2 < bb.min.x - tol || x + pW / 2 > bb.max.x + tol) continue
-          if (z - pH / 2 < bb.min.z - tol || z + pH / 2 > bb.max.z + tol) continue
+          // Precise: all 4 panel corners inside face polygon
+          const poly = facePolysXZ[fi]
+          if (!inFaceXZ(x - hx, z - hz, poly)) continue
+          if (!inFaceXZ(x + hx, z - hz, poly)) continue
+          if (!inFaceXZ(x + hx, z + hz, poly)) continue
+          if (!inFaceXZ(x - hx, z + hz, poly)) continue
           const y = getFaceY(face, x, z)
           if (y >= wallHeight - 0.05 && y > bestY) { bestY = y; bestFace = face }
         }
