@@ -159,15 +159,20 @@ export default function SolarPanels({ localPoly, roofType, pitch, azimuth, wallH
         if (result.length >= maxPool) break
         if (!panelContained(x, z)) continue
 
-        // Select face: only faces whose XZ bbox contains this point; pick highest Y
+        // Select face: panel center AND full footprint must be within face XZ bbox
         let bestFace: RoofFace | null = null
         let bestY = -Infinity
         for (let fi = 0; fi < faces.length; fi++) {
           const face = faces[fi]
           if (Math.abs(face.normal.y) < 0.01) continue
           const bb = faceBBs[fi]
-          if (x < bb.min.x - 0.05 || x > bb.max.x + 0.05) continue
-          if (z < bb.min.z - 0.05 || z > bb.max.z + 0.05) continue
+          const tol = 0.05
+          // Center check
+          if (x < bb.min.x - tol || x > bb.max.x + tol) continue
+          if (z < bb.min.z - tol || z > bb.max.z + tol) continue
+          // Footprint check — prevents panels from straddling the ridge or hip edges
+          if (x - pW / 2 < bb.min.x - tol || x + pW / 2 > bb.max.x + tol) continue
+          if (z - pH / 2 < bb.min.z - tol || z + pH / 2 > bb.max.z + tol) continue
           const y = getFaceY(face, x, z)
           if (y >= wallHeight - 0.05 && y > bestY) { bestY = y; bestFace = face }
         }
@@ -182,7 +187,6 @@ export default function SolarPanels({ localPoly, roofType, pitch, azimuth, wallH
       }
     }
 
-    console.log('[SolarPanels] total panels:', result.length, 'sample Y:', result.slice(0,3).map(p => +p.y.toFixed(3)))
     return result
   }, [localPoly, roofType, pitch, azimuth, wallHeight, panelCount, panelWidthMm, panelHeightMm, orientation, spacingHCm, spacingVCm])
 
