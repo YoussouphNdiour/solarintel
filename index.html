@@ -957,6 +957,25 @@
                             Capturer la vue
                         </button>
                     </div>
+                    <!-- 3D capture -->
+                    <div class="flex items-center justify-between mb-1.5 mt-2">
+                        <span class="text-xs text-slate-400 flex items-center gap-1.5">
+                            <i data-lucide="box" class="w-3 h-3 text-purple-400"></i>
+                            Vue 3D (normal + irradiance)
+                        </span>
+                        <button onclick="capture3DScreenshots()"
+                            id="btn3DCapture"
+                            class="flex items-center gap-1.5 text-xs text-purple-400 border border-purple-400/40 hover:bg-purple-400/10 px-2 py-1 rounded-md transition-colors">
+                            <i data-lucide="camera" class="w-3 h-3"></i>
+                            Capturer vue 3D
+                        </button>
+                    </div>
+                    <div id="wrap3DCapture" class="hidden relative mb-1">
+                        <img id="preview3DCapture" src="" alt="Aperçu 3D"
+                            class="w-full rounded-md border border-slate-700 object-cover" style="max-height:80px">
+                        <span class="absolute bottom-1 left-1.5 text-xs text-white bg-slate-900/60 px-1.5 py-0.5 rounded">Vue 3D incluse</span>
+                    </div>
+                    <p id="hint3DCapture" class="text-xs text-slate-600 mt-1">Ouvrez la vue 3D, configurez les obstacles, puis capturez.</p>
                     <!-- Miniature de prévisualisation -->
                     <div id="mapCaptureWrap" class="hidden relative">
                         <img id="mapCapturePreview" src="" alt="Aperçu carte"
@@ -2044,6 +2063,9 @@ async function generateReport() {
         // Personnalisation visuelle
         logo_b64:           window._reportLogoB64    || '',
         map_screenshot_b64: window._mapScreenshotB64 || '',
+        view3d_screenshots_b64: Object.values(window._3dScreenshots || {}),
+        obstacles_shading_pct: _state.obstaclesShadingPct || 0,
+        obstacles_list: _state.obstacleCount > 0 ? [{ type: 'mixed', count: _state.obstacleCount }] : [],
         color_primary:   document.getElementById('colorPrimary')?.value   || '#0EA5E9',
         color_secondary: document.getElementById('colorSecondary')?.value || '#0369A1',
         // KPIs actuels
@@ -2923,11 +2945,30 @@ window.addEventListener('message', function(e) {
     if (e.data.type === 'SHADOW_FACTOR') {
         _state.obstaclesShadingPct = e.data.shadingPct || 0;
         _state.obstacleCount = e.data.obstacleCount || 0;
-        // Update KPI badge if present
         const el = document.getElementById('kpiShading');
         if (el) el.textContent = _state.obstaclesShadingPct.toFixed(1) + '%';
         const wrap = document.getElementById('kpiShadingRow');
         if (wrap && _state.obstacleCount > 0) wrap.classList.remove('hidden');
+    }
+
+    if (e.data.type === 'SCREENSHOT_3D' && e.data.dataUrl && e.data.mode) {
+        window._3dScreenshots[e.data.mode] = e.data.dataUrl;
+        const count = Object.keys(window._3dScreenshots).length;
+        // Both screenshots received (normal + irradiance)
+        if (count >= 2 || (count >= 1 && !window._3dScreenshotsPending)) {
+            window._3dScreenshotsPending = false;
+            const btn = document.getElementById('btn3DCapture');
+            const hint = document.getElementById('hint3DCapture');
+            const wrap = document.getElementById('wrap3DCapture');
+            if (btn) { btn.disabled = false; btn.innerHTML = '<i data-lucide="camera" class="w-3 h-3"></i> Capturer vue 3D'; _safeCreateIcons(); }
+            if (hint) { hint.textContent = count + ' vue(s) 3D capturée(s) — incluses dans le rapport.'; hint.className = 'text-xs text-green-500 mt-1'; }
+            // Show preview of normal view
+            if (wrap && window._3dScreenshots.normal) {
+                wrap.classList.remove('hidden');
+                const img = document.getElementById('preview3DCapture');
+                if (img) img.src = window._3dScreenshots.normal;
+            }
+        }
     }
 });
 
@@ -3578,7 +3619,31 @@ function closeEquipmentModal() {
 // RAPPORT — LOGO + COULEURS + CAPTURE CARTE
 // =========================================================================
 window._reportLogoB64    = '';
-window._mapScreenshotB64 = '';  // data URL PNG de la vue carte (calepinage PDF)
+window._mapScreenshotB64 = '';        // data URL PNG de la vue carte (calepinage PDF)
+window._3dScreenshots = {};           // { normal: dataUrl, irradiance: dataUrl }
+window._3dScreenshotsPending = false;
+
+function capture3DScreenshots() {
+    const frame = document.getElementById('view3dFrame');
+    if (!frame || !frame.contentWindow || !_view3dReady) {
+        alert('Ouvrez d\'abord la vue 3D et attendez qu\'elle soit chargée.');
+        return;
+    }
+    const btn = document.getElementById('btn3DCapture');
+    const hint = document.getElementById('hint3DCapture');
+    if (btn) { btn.disabled = true; btn.innerHTML = '<i data-lucide="loader-2" class="w-3 h-3 animate-spin"></i> Capture…'; _safeCreateIcons(); }
+    window._3dScreenshots = {};
+    window._3dScreenshotsPending = true;
+    frame.contentWindow.postMessage({ type: 'REQUEST_SCREENSHOTS' }, '*');
+    // Timeout fallback
+    setTimeout(function() {
+        if (window._3dScreenshotsPending) {
+            window._3dScreenshotsPending = false;
+            if (btn) { btn.disabled = false; btn.innerHTML = '<i data-lucide="camera" class="w-3 h-3"></i> Capturer vue 3D'; _safeCreateIcons(); }
+            if (hint) { hint.textContent = 'Délai dépassé — réessayez depuis la vue 3D.'; hint.className = 'text-xs text-red-400 mt-1'; }
+        }
+    }, 5000);
+}
 
 // ── Capture carte (ArcGIS takeScreenshot) ────────────────────────────────────
 async function captureMapForReport() {
