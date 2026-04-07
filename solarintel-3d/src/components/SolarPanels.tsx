@@ -85,7 +85,7 @@ export default function SolarPanels({ localPoly, roofType, pitch, azimuth, wallH
     removedPanels, sceneMode, addPanel,
     irradianceMode, lat, lon, simDate, simHour, obstacles,
     panelWidthMm, panelHeightMm, orientation,
-    spacingHCm, spacingVCm, panelPositions,
+    spacingHCm, spacingVCm, panelPositions, holePolygons,
   } = useStore()
   const meshRef = useRef<THREE.InstancedMesh>(null)
 
@@ -157,10 +157,40 @@ export default function SolarPanels({ localPoly, roofType, pitch, azimuth, wallH
       return { face: bestFace, y: bestY }
     }
 
+    // ── Hole polygons: convert WGS84 rings → local XZ for Branch B exclusion ─
+    const [centLon, centLat] = localPoly.centroid
+    const lat0Rad = centLat * Math.PI / 180
+
+    const holePolysXZ: [number, number][][] = (holePolygons || []).map(ring => {
+      const open = ring.length > 1 &&
+        ring[0][0] === ring[ring.length - 1][0] &&
+        ring[0][1] === ring[ring.length - 1][1]
+          ? ring.slice(0, -1) : ring
+      return (open as [number, number][]).map(([hLon, hLat]): [number, number] => [
+        (hLon - centLon) * Math.cos(lat0Rad) * EARTH_RADIUS * Math.PI / 180,
+        (hLat - centLat) * EARTH_RADIUS * Math.PI / 180,
+      ])
+    })
+
+    function isInAnyHole(cx: number, cz: number): boolean {
+      for (const hPoly of holePolysXZ) {
+        if (hPoly.length < 3) continue
+        let inside = false
+        const nh = hPoly.length
+        for (let i = 0, j = nh - 1; i < nh; j = i++) {
+          const xi = hPoly[i][0], zi = hPoly[i][1]
+          const xj = hPoly[j][0], zj = hPoly[j][1]
+          if ((zi > cz) !== (zj > cz) && cx < ((xj - xi) * (cz - zi) / (zj - zi) + xi))
+            inside = !inside
+        }
+        if (inside) return true
+      }
+      return false
+    }
+
     // ── Branch A: use exact 2D panel positions (lon/lat) ─────────────────────
     if (panelPositions && panelPositions.length > 0) {
-      const [centLon, centLat] = localPoly.centroid
-      const lat0Rad = centLat * Math.PI / 180
+      console.log('[3D SolarPanels] Branch A — using', panelPositions.length, '2D positions')
       const result: PanelPos[] = []
 
       for (const [lon2d, lat2d] of panelPositions) {
@@ -238,6 +268,7 @@ export default function SolarPanels({ localPoly, roofType, pitch, azimuth, wallH
       for (let z = minZ + stepZ / 2; z <= maxZ - pH / 2 + 1e-6; z += stepZ) {
         if (result.length >= maxPool) break
         if (!panelContained(x, z)) continue
+        if (isInAnyHole(x, z)) continue
 
         let bestFace: RoofFace | null = null
         let bestY = -Infinity
@@ -268,7 +299,7 @@ export default function SolarPanels({ localPoly, roofType, pitch, azimuth, wallH
     }
 
     return result
-  }, [localPoly, roofType, pitch, azimuth, wallHeight, panelCount, panelWidthMm, panelHeightMm, orientation, spacingHCm, spacingVCm, panelPositions])
+  }, [localPoly, roofType, pitch, azimuth, wallHeight, panelCount, panelWidthMm, panelHeightMm, orientation, spacingHCm, spacingVCm, panelPositions, holePolygons])
 
   const COLOR_REMOVED = new THREE.Color('#0F172A')
   const COLOR_GHOST = new THREE.Color('#22C55E')

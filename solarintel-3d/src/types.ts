@@ -38,6 +38,7 @@ export interface ParentMessage {
   polygon?: [number, number][]
   panelCount?: number
   panelPositions?: [number, number][]   // lon/lat center of each active 2D panel
+  holePolygons?: [number, number][][]   // WGS84 rings of drawn hole zones
   lat?: number
   lon?: number
   annualConsumption?: number

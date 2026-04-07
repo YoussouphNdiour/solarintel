@@ -18,6 +18,7 @@ export default function App() {
           polygon: e.data.polygon,
           panelCount: e.data.panelCount,
           panelPositions: e.data.panelPositions,
+          holePolygons: e.data.holePolygons,
           lat: e.data.lat,
           lon: e.data.lon,
           annualConsumption: e.data.annualConsumption,

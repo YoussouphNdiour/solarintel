@@ -2895,11 +2895,27 @@ function _send3DInit() {
         });
     }
 
+    // Collect hole polygon rings (WGS84 lon/lat) from all zones
+    const holePolygons = [];
+    if (_state.zones) {
+        _state.zones.forEach(function(zone) {
+            if (zone.holes) {
+                zone.holes.forEach(function(hole) {
+                    if (hole && hole.rings && hole.rings[0]) {
+                        holePolygons.push(hole.rings[0]);
+                    }
+                });
+            }
+        });
+    }
+    console.log('[SolarIntel 2D→3D] Sending', panelPositions.length, 'panel positions,', holePolygons.length, 'holes');
+
     frame.contentWindow.postMessage({
         type: 'INIT',
         polygon: firstRing,
         panelCount: _state.panelCount || 0,
         panelPositions: panelPositions,
+        holePolygons: holePolygons,
         lat: centroid.latitude  || 14.716,
         lon: centroid.longitude || -17.467,
         annualConsumption: _state.annualConsumption || 0,

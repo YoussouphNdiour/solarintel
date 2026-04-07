@@ -8,6 +8,7 @@ interface AppState {
   polygon: [number, number][] | null
   panelCount: number
   panelPositions: [number, number][] | null   // exact 2D panel center positions (lon/lat)
+  holePolygons: [number, number][][] | null   // WGS84 rings of drawn hole zones
   lat: number
   lon: number
   annualConsumption: number
@@ -66,6 +67,7 @@ interface AppState {
     polygon?: [number, number][]
     panelCount?: number
     panelPositions?: [number, number][]
+    holePolygons?: [number, number][][]
     lat?: number
     lon?: number
     annualConsumption?: number
@@ -107,6 +109,7 @@ export const useStore = create<AppState>((set, get) => ({
   polygon: null,
   panelCount: 12,
   panelPositions: null,
+  holePolygons: null,
   lat: 14.716,
   lon: -17.467,
   annualConsumption: 0,
@@ -164,6 +167,7 @@ export const useStore = create<AppState>((set, get) => ({
         polygon: data.polygon ?? s.polygon,
         panelCount: newCount,
         panelPositions: newPositions,
+        holePolygons: data.holePolygons ?? s.holePolygons,
         removedPanels: newRemoved,
         lat: data.lat ?? s.lat,
         lon: data.lon ?? s.lon,
