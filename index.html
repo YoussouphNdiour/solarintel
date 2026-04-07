@@ -568,7 +568,7 @@
                         <div>
                             <label class="block text-xs text-slate-400 mb-1">Grille Senelec</label>
                             <select id="bilanSenelecTariff" class="si-select"
-                                    onchange="updateState('senelec_tariff', this.value || null)">
+                                    onchange="updateState('senelec_tariff', this.value || null); _togglePrixKwh('bilanPriceKwh', this.value);">
                                 <option value="">Tarif fixe (manuel)</option>
                                 <option value="DPP">DPP — Domestique Petite</option>
                                 <option value="DMP">DMP — Domestique Moyenne</option>
@@ -611,7 +611,7 @@
                     </div>
                     <div>
                         <label class="block text-xs text-slate-400 mb-1">Grille Senelec</label>
-                        <select id="senelecTariff" class="si-select" onchange="updateState('senelec_tariff', this.value || null)">
+                        <select id="senelecTariff" class="si-select" onchange="updateState('senelec_tariff', this.value || null); _togglePrixKwh('priceKwh', this.value);">
                             <option value="">Tarif fixe (manuel)</option>
                             <option value="DPP">DPP — Domestique Petite</option>
                             <option value="DMP">DMP — Domestique Moyenne</option>
@@ -736,6 +736,10 @@
                     <div class="kpi-card">
                         <p class="text-xs text-slate-400">Taux couverture</p>
                         <p id="kpiCoverage" class="text-xl font-mono font-bold text-green-400">— <span class="text-sm font-normal text-slate-400">%</span></p>
+                    </div>
+                    <div id="kpiShadingRow" class="kpi-card col-span-2 hidden">
+                        <p class="text-xs text-slate-400">Pertes ombrage obstacles</p>
+                        <p id="kpiShading" class="text-xl font-mono font-bold text-amber-400">— <span class="text-sm font-normal text-slate-400">%</span></p>
                     </div>
                     <div class="kpi-card">
                         <p class="text-xs text-slate-400">Economie annuelle</p>
@@ -1477,6 +1481,8 @@ const _state = {
     installPct: 15,
     capexTotal: 0,
     backendAvailable: false,
+    obstaclesShadingPct: 0,
+    obstacleCount: 0,
 };
 
 const STATE = new Proxy(_state, {
@@ -2186,6 +2192,7 @@ async function _doCallBackend() {
         temp_coeff_pmax: STATE.tempCoeff,
         surface_tilt: _state.roofTilt,
         surface_azimuth: _state.roofAzimuth || 180,
+        obstacles_shading_pct: _state.obstaclesShadingPct || 0,
     };
 
     try {
@@ -2208,12 +2215,13 @@ async function _doCallBackend() {
         _state.coverageRate = annual > 0
             ? Math.min(100, Math.round(sim.annual_production_kwh / annual * 100))
             : 0;
+        STATE.coverageRate = _state.coverageRate;
         _state.annualSavings = Math.round(econ.annual_savings_year1_xof);
         _state.paybackYears = econ.payback_years;
         _state.lcoe = econ.lcoe_xof_kwh;
 
         setKPI('kpiProduction', numberFmt(Math.round(sim.annual_production_kwh)), 'kWh/an');
-        setKPI('kpiCoverage', _state.coverageRate > 0 ? _state.coverageRate : '—', '%');
+        setKPI('kpiCoverage', _state.coverageRate > 0 ? Math.round(_state.coverageRate) : '—', '%');
         setKPI('kpiSavings', numberFmt(_state.annualSavings), 'XOF');
         setKPI('kpiPayback', econ.payback_years, 'ans');
         setKPI('kpiLCOE', econ.lcoe_xof_kwh, 'XOF/kWh');
@@ -2465,7 +2473,7 @@ require([
                 if (zoneIdx === 0) STATE.polygon = geoPolygon;
                 STATE.polygonArea_m2 = _state.zones.reduce(function(s, z) { return s + (z.area || 0); }, 0);
             }
-            generateCalpinage();
+            _markCalpinageStale();
             return; // no goTo — user is already looking at the zone
         }
 
@@ -2490,7 +2498,7 @@ require([
             if (el) el.disabled = false;
         });
 
-        generateCalpinage();
+        _markCalpinageStale();
         mapView.goTo(polygon.extent.expand(1.8));
     }
 });
@@ -2598,14 +2606,22 @@ function _updateAzimuthUI(az) {
     });
 }
 
+function _togglePrixKwh(inputId, tariffValue) {
+    const input = document.getElementById(inputId);
+    if (!input) return;
+    const row = input.closest('div');
+    if (!row) return;
+    if (tariffValue && tariffValue !== '') {
+        row.style.display = 'none';
+    } else {
+        row.style.display = '';
+    }
+}
+
 function setAzimuth2D(az) {
     az = ((az % 360) + 360) % 360;
     _state.roofAzimuth = az;
     _updateAzimuthUI(az);
-    // Retrigger calpinage if panels already exist
-    if (STATE.panelCount > 0 || (panelLayer && panelLayer.graphics && panelLayer.graphics.length > 0)) {
-        generateCalpinage();
-    }
     // Sync to 3D iframe
     const frame = document.getElementById('view3dFrame');
     if (frame && frame.contentWindow && _view3dReady) {
@@ -2613,8 +2629,21 @@ function setAzimuth2D(az) {
     }
 }
 
+function _markCalpinageStale() {
+    const btn = document.getElementById('btnCalpinage');
+    const hint = document.getElementById('calpinageHint');
+    if (btn) btn.disabled = false;
+    if (hint) {
+        hint.textContent = 'Zone modifiée — cliquez "Générer" pour mettre à jour';
+        hint.className = 'text-xs text-amber-400 mt-2 text-center';
+    }
+}
+
 function generateCalpinage() {
     if (_state.zones.length === 0 && !STATE.polygon) return;
+
+    const _hint = document.getElementById('calpinageHint');
+    if (_hint) { _hint.textContent = 'Génération en cours…'; _hint.className = 'text-xs text-slate-500 mt-2 text-center'; }
 
     // Backward compat: if zones not populated but STATE.polygon is set
     if (_state.zones.length === 0 && STATE.polygon) {
@@ -2874,10 +2903,6 @@ window.addEventListener('message', function(e) {
             if (geomCard) geomCard.classList.remove('hidden');
             _safeCreateIcons();
         }
-        // Retrigger calpinage grid + simulation
-        if (STATE.panelCount > 0 || (panelLayer && panelLayer.graphics && panelLayer.graphics.length > 0)) {
-            generateCalpinage();
-        }
         if (STATE.panelCount > 0) _doCallBackend();
     }
 
@@ -2893,6 +2918,16 @@ window.addEventListener('message', function(e) {
         STATE.panelCount = Math.max(0, (STATE.panelCount || 0) - 1);
         _state.panelCount = STATE.panelCount;
         updatePanelBadge();
+    }
+
+    if (e.data.type === 'SHADOW_FACTOR') {
+        _state.obstaclesShadingPct = e.data.shadingPct || 0;
+        _state.obstacleCount = e.data.obstacleCount || 0;
+        // Update KPI badge if present
+        const el = document.getElementById('kpiShading');
+        if (el) el.textContent = _state.obstaclesShadingPct.toFixed(1) + '%';
+        const wrap = document.getElementById('kpiShadingRow');
+        if (wrap && _state.obstacleCount > 0) wrap.classList.remove('hidden');
     }
 });
 
@@ -3667,6 +3702,13 @@ document.addEventListener('DOMContentLoaded', function() {
     setInterval(checkOllama, 30000);
     // Refresh icons after ArcGIS loads (it resets the DOM)
     setTimeout(_safeCreateIcons, 2000);
+    // Initialize Prix kWh visibility
+    (function() {
+        const s1 = document.getElementById('bilanSenelecTariff');
+        const s2 = document.getElementById('senelecTariff');
+        if (s1) _togglePrixKwh('bilanPriceKwh', s1.value);
+        if (s2) _togglePrixKwh('priceKwh', s2.value);
+    })();
 });
 </script>
 
