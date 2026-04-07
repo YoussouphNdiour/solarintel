@@ -103,6 +103,11 @@
             box-shadow: 0 0 0 2px rgba(14, 165, 233, 0.15);
         }
 
+        /* Azimuth compass buttons */
+        .az-btn-active   { background:#0EA5E9; color:#fff; }
+        .az-btn-inactive { background:#0F172A; color:#475569; border:1px solid #334155; }
+        .az-btn-inactive:hover { color:#fff; border-color:#0EA5E9; }
+
         /* KPI card */
         .kpi-card {
             background: #0F172A;
@@ -652,6 +657,42 @@
                             <option value="portrait">Portrait</option>
                             <option value="landscape">Paysage</option>
                         </select>
+                    </div>
+                    <!-- Azimut -->
+                    <div class="col-span-3">
+                        <label class="block text-xs text-slate-400 mb-1">Azimut des panneaux</label>
+                        <div class="flex items-center gap-2 mb-1.5">
+                            <input id="azimutSlider" type="range" min="0" max="360" step="1" value="180"
+                                oninput="setAzimuth2D(+this.value)"
+                                class="flex-1 h-1.5 rounded-full accent-solar-blue cursor-pointer">
+                            <input id="azimutNumber" type="number" min="0" max="360" step="1" value="180"
+                                oninput="setAzimuth2D(((+this.value%360)+360)%360)"
+                                class="si-input w-16 text-right font-mono text-xs py-1">
+                            <span class="text-slate-400 text-xs">°</span>
+                        </div>
+                        <!-- 8 compass quick-presets -->
+                        <div class="grid grid-cols-8 gap-0.5 mb-1.5">
+                            <button onclick="setAzimuth2D(0)"   id="azBtn0"   class="az-btn az-btn-inactive py-1 rounded text-[9px] font-medium transition-all">N</button>
+                            <button onclick="setAzimuth2D(45)"  id="azBtn45"  class="az-btn az-btn-inactive py-1 rounded text-[9px] font-medium transition-all">NE</button>
+                            <button onclick="setAzimuth2D(90)"  id="azBtn90"  class="az-btn az-btn-inactive py-1 rounded text-[9px] font-medium transition-all">E</button>
+                            <button onclick="setAzimuth2D(135)" id="azBtn135" class="az-btn az-btn-inactive py-1 rounded text-[9px] font-medium transition-all">SE</button>
+                            <button onclick="setAzimuth2D(180)" id="azBtn180" class="az-btn az-btn-active  py-1 rounded text-[9px] font-medium transition-all">S</button>
+                            <button onclick="setAzimuth2D(225)" id="azBtn225" class="az-btn az-btn-inactive py-1 rounded text-[9px] font-medium transition-all">SO</button>
+                            <button onclick="setAzimuth2D(270)" id="azBtn270" class="az-btn az-btn-inactive py-1 rounded text-[9px] font-medium transition-all">O</button>
+                            <button onclick="setAzimuth2D(315)" id="azBtn315" class="az-btn az-btn-inactive py-1 rounded text-[9px] font-medium transition-all">NO</button>
+                        </div>
+                        <!-- Mini compass + hint -->
+                        <div class="flex items-center gap-2">
+                            <div class="relative w-7 h-7 flex-shrink-0">
+                                <div class="absolute inset-0 rounded-full border border-slate-600"></div>
+                                <div id="azCompassNeedle" class="absolute inset-0 flex items-center justify-center">
+                                    <div class="w-0.5 h-2.5 bg-solar-blue rounded-full origin-bottom"
+                                        style="transform: rotate(180deg); transform-origin: 50% 100%"></div>
+                                </div>
+                                <span class="absolute -top-1 left-1/2 -translate-x-1/2 text-[7px] text-slate-500">N</span>
+                            </div>
+                            <span id="azimutHint" class="text-slate-500 text-[10px]">Plein Sud (optimal)</span>
+                        </div>
                     </div>
                     <div class="col-span-3">
                         <label class="block text-xs text-slate-400 mb-1">Type d'installation</label>
@@ -2507,6 +2548,71 @@ function deleteHole(graphic) {
 // =========================================================================
 // CALPINAGE ALGORITHM
 // =========================================================================
+// Azimuth directions: display names and angles for the 8-point compass
+const _AZ_DIRS = [
+    { id: 'azBtn0',   az: 0   },
+    { id: 'azBtn45',  az: 45  },
+    { id: 'azBtn90',  az: 90  },
+    { id: 'azBtn135', az: 135 },
+    { id: 'azBtn180', az: 180 },
+    { id: 'azBtn225', az: 225 },
+    { id: 'azBtn270', az: 270 },
+    { id: 'azBtn315', az: 315 },
+];
+const _AZ_HINTS = {
+    180: 'Plein Sud (optimal)',
+    0:   'Plein Nord (non recommandé)',
+    90:  'Est — sous-optimal',
+    270: 'Ouest — sous-optimal',
+};
+
+function _updateAzimuthUI(az) {
+    // Normalize
+    az = ((az % 360) + 360) % 360;
+    // Slider + number input
+    const slider = document.getElementById('azimutSlider');
+    const num    = document.getElementById('azimutNumber');
+    if (slider) slider.value = az;
+    if (num)    num.value    = Math.round(az);
+    // Compass needle
+    const needle = document.querySelector('#azCompassNeedle div');
+    if (needle) needle.style.transform = 'rotate(' + az + 'deg)';
+    // Hint text
+    const hint = document.getElementById('azimutHint');
+    if (hint) {
+        const known = _AZ_HINTS[Math.round(az)];
+        hint.textContent = known || (Math.abs(az - 180) <= 45 ? 'Proche du Sud' : 'Sous-optimal — préférer ~180°');
+    }
+    // Compass buttons: highlight the closest preset
+    _AZ_DIRS.forEach(function(d) {
+        const btn = document.getElementById(d.id);
+        if (!btn) return;
+        const diff = Math.abs(((az - d.az + 540) % 360) - 180);
+        const isActive = diff < 23;
+        btn.className = btn.className
+            .replace('az-btn-active',   'az-btn-inactive')
+            .replace('az-btn-inactive', 'az-btn-inactive');
+        if (isActive) {
+            btn.className = btn.className.replace('az-btn-inactive', 'az-btn-active');
+        }
+    });
+}
+
+function setAzimuth2D(az) {
+    az = ((az % 360) + 360) % 360;
+    _state.roofAzimuth = az;
+    _updateAzimuthUI(az);
+    // Retrigger calpinage if panels already exist
+    if (STATE.panelCount > 0 || (panelLayer && panelLayer.graphics && panelLayer.graphics.length > 0)) {
+        generateCalpinage();
+    }
+    // Sync to 3D iframe
+    const frame = document.getElementById('view3dFrame');
+    if (frame && frame.contentWindow && _view3dReady) {
+        frame.contentWindow.postMessage({ type: 'SET_AZIMUTH', azimuth: az }, '*');
+    }
+}
+
 function generateCalpinage() {
     if (_state.zones.length === 0 && !STATE.polygon) return;
 
@@ -2577,14 +2683,30 @@ function _calpinageOneZone(zone, zoneIdx) {
     const cellH_m = panelH_m + STATE.spacingV_cm / 100;
 
     const ext = polygon.extent;
-    const minLon = ext.xmin, maxLon = ext.xmax;
-    const minLat = ext.ymin, maxLat = ext.ymax;
-    const centerLat = (minLat + maxLat) / 2;
+    const centLon = (ext.xmin + ext.xmax) / 2;
+    const centLat = (ext.ymin + ext.ymax) / 2;
 
-    const cellW_deg  = metersToDegreesLon(cellW_m, centerLat);
-    const cellH_deg  = metersToDegreesLat(cellH_m, centerLat);
-    const panelW_deg = metersToDegreesLon(panelW_m, centerLat);
-    const panelH_deg = metersToDegreesLat(panelH_m, centerLat);
+    // Azimuth rotation: 180° = South = no rotation (default), deviation rotates the grid
+    const az = _state.roofAzimuth || 180;
+    const theta = -(az - 180) * Math.PI / 180;  // CCW in math (X=East, Y=North)
+    const cosT = Math.cos(theta);
+    const sinT = Math.sin(theta);
+
+    // Conversion factors: meters <-> degrees at centroid latitude
+    const mPerDegLat = 111320;
+    const mPerDegLon = 111320 * Math.cos(centLat * Math.PI / 180);
+
+    // Local rotated grid → lon/lat. lx=panel-width-axis, ly=panel-height-axis.
+    function localToLonLat(lx, ly) {
+        const rx = lx * cosT - ly * sinT;  // meters East
+        const ry = lx * sinT + ly * cosT;  // meters North
+        return [centLon + rx / mPerDegLon, centLat + ry / mPerDegLat];
+    }
+
+    // Grid bounds: use diagonal of polygon extent to cover all rotations
+    const extW_m = (ext.xmax - ext.xmin) * mPerDegLon;
+    const extH_m = (ext.ymax - ext.ymin) * mPerDegLat;
+    const diag = Math.sqrt(extW_m * extW_m + extH_m * extH_m) / 2 + Math.max(cellW_m, cellH_m);
 
     const SPECIFIC_YIELD = 1700;
     const annualKwh   = STATE.annualConsumption || 0;
@@ -2595,38 +2717,38 @@ function _calpinageOneZone(zone, zoneIdx) {
         ? Math.ceil((annualKwh / selfUse) / SPECIFIC_YIELD / panelPwr_kWc * 1.1)
         : 5000;
 
-    // Zone colour palette
     const ZONE_COLORS = [
-        { fill:[14,165,233,0.25],  stroke:[14,165,233,0.8]  },  // blue
-        { fill:[139,92,246,0.25],  stroke:[139,92,246,0.8]  },  // violet
-        { fill:[34,197,94,0.25],   stroke:[34,197,94,0.8]   },  // green
-        { fill:[249,115,22,0.25],  stroke:[249,115,22,0.8]  },  // orange
-        { fill:[236,72,153,0.25],  stroke:[236,72,153,0.8]  },  // pink
+        { fill:[14,165,233,0.25],  stroke:[14,165,233,0.8]  },
+        { fill:[139,92,246,0.25],  stroke:[139,92,246,0.8]  },
+        { fill:[34,197,94,0.25],   stroke:[34,197,94,0.8]   },
+        { fill:[249,115,22,0.25],  stroke:[249,115,22,0.8]  },
+        { fill:[236,72,153,0.25],  stroke:[236,72,153,0.8]  },
     ];
     const col = ZONE_COLORS[zoneIdx % ZONE_COLORS.length];
     const sym = { type:'simple-fill', color:col.fill, outline:{color:col.stroke, width:0.75} };
 
+    const hw = panelW_m / 2;
+    const hh = panelH_m / 2;
     const panels = [];
-    let lon = minLon + cellW_deg / 2;
-    while (lon + panelW_deg / 2 <= maxLon && panels.length < MAX_PANELS) {
-        let lat = minLat + cellH_deg / 2;
-        while (lat + panelH_deg / 2 <= maxLat && panels.length < MAX_PANELS) {
-            const x1 = lon - panelW_deg / 2, y1 = lat - panelH_deg / 2;
-            const x2 = lon + panelW_deg / 2, y2 = lat + panelH_deg / 2;
+
+    for (let gx = -diag + cellW_m / 2; gx <= diag && panels.length < MAX_PANELS; gx += cellW_m) {
+        for (let gy = -diag + cellH_m / 2; gy <= diag && panels.length < MAX_PANELS; gy += cellH_m) {
+            const c1 = localToLonLat(gx - hw, gy - hh);
+            const c2 = localToLonLat(gx + hw, gy - hh);
+            const c3 = localToLonLat(gx + hw, gy + hh);
+            const c4 = localToLonLat(gx - hw, gy + hh);
             const panelPoly = new PolygonRef({
-                rings: [[[x1,y1],[x2,y1],[x2,y2],[x1,y2],[x1,y1]]],
+                rings: [[c1, c2, c3, c4, c1]],
                 spatialReference: { wkid: 4326 },
             });
             if (geometryEngineRef.contains(polygon, panelPoly) &&
                 !holes.some(function(h) { return geometryEngineRef.intersects(h, panelPoly); })) {
                 panels.push(panelPoly);
             }
-            lat += cellH_deg;
         }
-        lon += cellW_deg;
     }
 
-    panels.forEach(function(panelGeom, idx) {
+    panels.forEach(function(panelGeom) {
         panelLayer.add(new GraphicRef({
             geometry: panelGeom,
             symbol: sym,
@@ -2740,7 +2862,10 @@ window.addEventListener('message', function(e) {
     // Sync tilt/azimuth from 3D view back to simulation params
     if (e.data.type === 'TILT_AZIMUTH') {
         if (typeof e.data.tilt === 'number')    _state.roofTilt    = e.data.tilt;
-        if (typeof e.data.azimuth === 'number') _state.roofAzimuth = e.data.azimuth;
+        if (typeof e.data.azimuth === 'number') {
+            _state.roofAzimuth = e.data.azimuth;
+            _updateAzimuthUI(e.data.azimuth);
+        }
         // Update roof geometry KPI badge
         const geomEl = document.getElementById('kpiRoofGeom');
         const geomCard = document.getElementById('roofGeomInfo');
@@ -2749,7 +2874,10 @@ window.addEventListener('message', function(e) {
             if (geomCard) geomCard.classList.remove('hidden');
             _safeCreateIcons();
         }
-        // Retrigger simulation with updated tilt/azimuth
+        // Retrigger calpinage grid + simulation
+        if (STATE.panelCount > 0 || (panelLayer && panelLayer.graphics && panelLayer.graphics.length > 0)) {
+            generateCalpinage();
+        }
         if (STATE.panelCount > 0) _doCallBackend();
     }
 
