@@ -196,21 +196,20 @@ def simulate(req: SimulateRequest):
     # --- Step 3: PV System ---
     temp_params = TEMPERATURE_MODEL_PARAMETERS["sapm"]["open_rack_glass_glass"]
 
+    total_power_wc = req.panel_count * req.panel_power_wc  # full array (Wc)
     system = PVSystem(
         surface_tilt=req.surface_tilt if req.surface_tilt is not None else req.latitude,
         surface_azimuth=req.surface_azimuth,
         module_parameters={
-            "pdc0": req.panel_power_wc,
+            "pdc0": total_power_wc,        # pvwatts pdc0 = total array Wc
             "gamma_pdc": req.temp_coeff_pmax / 100,
             "b": 0.05,
         },
         inverter_parameters={
-            "pdc0": req.panel_power_wc * 1.1,
+            "pdc0": total_power_wc * 1.1,
             "eta_inv_nom": 0.96,
         },
         temperature_model_parameters=temp_params,
-        modules_per_string=req.panel_count,
-        strings_per_inverter=1,
     )
 
     # --- Step 4: ModelChain ---

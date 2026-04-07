@@ -312,9 +312,9 @@ def _cover_callback(canvas, doc):
     canvas.line(MARGIN + 6 * mm, line_y, W / 2 - 15 * mm, line_y)
     canvas.line(W / 2 + 15 * mm, line_y, W - MARGIN, line_y)
     # Sun icon center
-    canvas.setFont("Helvetica-Bold", 16)
+    canvas.setFont("Helvetica-Bold", 14)
     canvas.setFillColor(C_AMBER)
-    canvas.drawCentredString(W / 2, line_y - 4, "☀")
+    canvas.drawCentredString(W / 2, line_y - 4, "* SolarIntel *")
 
     # ── Système info (amber) ──────────────────────────────────────────────────
     sys_info = getattr(doc, "_sys_info", "")
@@ -811,10 +811,10 @@ class ReportGenerator:
                 textColor=HexColor("#F97316"), spaceAfter=2 * mm,
             )
             story.append(Paragraph(
-                f"⚠ ATTENTION : FP moyen site = {site_pf:.2f} < 0,80 — l'onduleur doit être "
-                f"sélectionné sur la base de {total_kva:.1f} kVA (puissance apparente) "
-                f"et non sur les kW seuls. Un facteur de puissance faible entraîne une "
-                f"surtension des câbles et un échauffement prématuré de l'onduleur.",
+                f"ATTENTION : FP moyen site = {site_pf:.2f} &lt; 0,80 - l'onduleur doit etre "
+                f"selectionne sur la base de {total_kva:.1f} kVA (puissance apparente) "
+                f"et non sur les kW seuls. Un facteur de puissance faible entraine une "
+                f"surtension des cables et un echauffement premature de l'onduleur.",
                 warn_style,
             ))
 
@@ -1100,8 +1100,8 @@ class ReportGenerator:
         body_sm = ParagraphStyle("bsm_cal", fontName="Helvetica", fontSize=8,
                                  textColor=C_TEXT_SEC, spaceAfter=2 * mm)
         story.append(Paragraph(
-            "ℹ L'espacement inter-rangées est calculé pour garantir l'absence d'ombrage "
-            "mutuel au solstice d'hiver (élévation solaire minimale 25°). "
+            "NB : L'espacement inter-rangées est calculé pour garantir l'absence d'ombrage "
+            "mutuel au solstice d'hiver (elevation solaire minimale 25 deg). "
             "La capture satellite du site est disponible via la vue carte de l'application.",
             body_sm,
         ))

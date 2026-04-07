@@ -247,7 +247,7 @@ def _build_pdf(req: ReportRequest) -> bytes:
     for a in req.appliances:
         kwh = a.qty * a.power * (a.hoursDay + a.hoursNight) / 1000
         appliance_lines.append(
-            f"• {a.name} ×{a.qty}  {int(a.power)} W  "
+            f"- {a.name} x{a.qty}  {int(a.power)} W  "
             f"{a.hoursDay}h/j + {a.hoursNight}h/n  →  {kwh:.2f} kWh/j"
         )
 
@@ -397,7 +397,8 @@ def _build_pdf(req: ReportRequest) -> bytes:
 
     # Champs supplémentaires (non dans SolarReport de base) — attachés dynamiquement
     report.client_name = req.client_name
-    report.appliances  = [a.model_dump() for a in req.appliances] if req.appliances else []
+    # En mode "consommation", pas de section bilan énergétique — on passe [] même si des appareils ont été saisis
+    report.appliances  = ([a.model_dump() for a in req.appliances] if req.appliances else []) if is_bilan else []
     report.equipment   = {
         "inverter": {
             "Marque":          req.inverter_brand,
@@ -715,19 +716,19 @@ def _static_recommendations(req: ReportRequest) -> str:
     # 1. Dimensionnement
     if coverage < 60:
         lines.append(
-            f"⚠ Taux de couverture insuffisant ({coverage:.0f}%). "
+            f"ATTN - Taux de couverture insuffisant ({coverage:.0f}%). "
             f"Augmentez la puissance installée vers {peak_kwc * 1.5:.1f} kWc "
             "pour couvrir au moins 80% de la consommation."
         )
     elif coverage > 130:
         lines.append(
-            f"ℹ Surproduction estimée ({coverage:.0f}%). "
+            f"INFO - Surproduction estimee ({coverage:.0f}%). "
             "Envisagez un système de stockage supplémentaire ou une injection réseau "
             "pour valoriser l'excédent de production."
         )
     else:
         lines.append(
-            f"✓ Taux de couverture optimal ({coverage:.0f}%). "
+            f"OK - Taux de couverture optimal ({coverage:.0f}%). "
             f"Le système de {peak_kwc:.2f} kWc est bien dimensionné "
             "par rapport à la consommation déclarée."
         )
@@ -735,27 +736,27 @@ def _static_recommendations(req: ReportRequest) -> str:
     # 2. Stockage vs charge nocturne
     if night_kwh > 0 and bat_total == 0:
         lines.append(
-            f"⚠ Charge nocturne de {night_kwh:.1f} kWh détectée sans stockage. "
+            f"ATTN - Charge nocturne de {night_kwh:.1f} kWh détectée sans stockage. "
             "Recommandation : au minimum 1 batterie UHOME 10.0 kWh pour couvrir "
             "la consommation nocturne et améliorer l'autonomie."
         )
     elif bat_total > 0 and night_kwh > bat_total * 0.8:
         lines.append(
-            f"⚠ Capacité de stockage ({bat_total:.1f} kWh) insuffisante pour couvrir "
+            f"ATTN - Capacite de stockage ({bat_total:.1f} kWh) insuffisante pour couvrir "
             f"la charge nocturne ({night_kwh:.1f} kWh). "
             "Ajoutez un module UHOME supplémentaire."
         )
     elif bat_total > 0:
         lines.append(
-            f"✓ Capacité de stockage de {bat_total:.1f} kWh. "
+            f"OK - Capacite de stockage de {bat_total:.1f} kWh. "
             f"Couverture nocturne estimée : {min(100, bat_total / night_kwh * 100):.0f}%."
             if night_kwh > 0 else
-            f"✓ Capacité de stockage de {bat_total:.1f} kWh disponible."
+            f"OK - Capacite de stockage de {bat_total:.1f} kWh disponible."
         )
 
     # 3. Économique & installation
     lines.append(
-        f"✓ Économie annuelle estimée : {_fmt(req.kpi_savings_xof)} XOF "
+        f"OK - Economie annuelle estimee : {_fmt(req.kpi_savings_xof)} XOF "
         f"avec un retour sur investissement en {req.kpi_payback_years:.1f} ans. "
         f"Orientation recommandée : Sud (azimut 180°), inclinaison {req.latitude:.1f}° "
         "(égale à la latitude du site). "
