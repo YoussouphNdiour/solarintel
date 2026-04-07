@@ -77,13 +77,15 @@ interface Props {
   wallHeight: number
 }
 
+const EARTH_RADIUS = 6371000
+
 export default function SolarPanels({ localPoly, roofType, pitch, azimuth, wallHeight }: Props) {
   const {
     panelCount, selectedPanel, setSelectedPanel,
     removedPanels, sceneMode, addPanel,
     irradianceMode, lat, lon, simDate, simHour, obstacles,
     panelWidthMm, panelHeightMm, orientation,
-    spacingHCm, spacingVCm,
+    spacingHCm, spacingVCm, panelPositions,
   } = useStore()
   const meshRef = useRef<THREE.InstancedMesh>(null)
 
@@ -100,6 +102,96 @@ export default function SolarPanels({ localPoly, roofType, pitch, azimuth, wallH
     const hM = panelHeightMm / 1000
     const pW = orientation === 'portrait' ? wM : hM
     const pH = orientation === 'portrait' ? hM : wM
+
+    // Plane constant D = N·P0 using first face vertex in world space (Y + wallHeight)
+    function getFaceY(face: RoofFace, x: number, z: number): number {
+      if (Math.abs(face.normal.y) < 1e-6) return wallHeight
+      const arr = face.geometry.attributes.position.array as Float32Array
+      const D = face.normal.x * arr[0] + face.normal.y * (arr[1] + wallHeight) + face.normal.z * arr[2]
+      return (D - face.normal.x * x - face.normal.z * z) / face.normal.y
+    }
+
+    // Precompute face bounding boxes (fast early rejection)
+    const faceBBs = faces.map((face) => {
+      if (!face.geometry.boundingBox) face.geometry.computeBoundingBox()
+      return face.geometry.boundingBox!
+    })
+
+    // Precompute face XZ polygons for precise containment (handles trapezoids + triangles)
+    const facePolysXZ = faces.map((face): [number, number][] => {
+      const arr = face.geometry.attributes.position.array as Float32Array
+      if (arr.length === 9) {
+        return [[arr[0], arr[2]], [arr[3], arr[5]], [arr[6], arr[8]]]
+      }
+      // Quad stored as 2 triangles: [v0,v1,v2, v0,v2,v3] → unique verts at slots 0,1,2,5
+      return [[arr[0], arr[2]], [arr[3], arr[5]], [arr[6], arr[8]], [arr[15], arr[17]]]
+    })
+
+    // Point-in-polygon check in XZ space (ray casting)
+    function inFaceXZ(px: number, pz: number, poly: [number, number][]): boolean {
+      let inside = false
+      const n = poly.length
+      for (let i = 0, j = n - 1; i < n; j = i++) {
+        const xi = poly[i][0], zi = poly[i][1]
+        const xj = poly[j][0], zj = poly[j][1]
+        if ((zi > pz) !== (zj > pz) && px < ((xj - xi) * (pz - zi) / (zj - zi) + xi))
+          inside = !inside
+      }
+      return inside
+    }
+
+    // Helper: find best roof face for a given XZ position
+    function pickFace(x: number, z: number, tol = 0.5): { face: RoofFace; y: number } | null {
+      let bestFace: RoofFace | null = null
+      let bestY = -Infinity
+      for (let fi = 0; fi < faces.length; fi++) {
+        const face = faces[fi]
+        if (Math.abs(face.normal.y) < 0.01) continue
+        const bb = faceBBs[fi]
+        if (x < bb.min.x - tol || x > bb.max.x + tol) continue
+        if (z < bb.min.z - tol || z > bb.max.z + tol) continue
+        const y = getFaceY(face, x, z)
+        if (y >= wallHeight - 0.1 && y > bestY) { bestY = y; bestFace = face }
+      }
+      if (!bestFace) return null
+      return { face: bestFace, y: bestY }
+    }
+
+    // ── Branch A: use exact 2D panel positions (lon/lat) ─────────────────────
+    if (panelPositions && panelPositions.length > 0) {
+      const [centLon, centLat] = localPoly.centroid
+      const lat0Rad = centLat * Math.PI / 180
+      const result: PanelPos[] = []
+
+      for (const [lon2d, lat2d] of panelPositions) {
+        const x = (lon2d - centLon) * Math.cos(lat0Rad) * EARTH_RADIUS * Math.PI / 180
+        const z = (lat2d - centLat) * EARTH_RADIUS * Math.PI / 180
+
+        const hit = pickFace(x, z, Math.max(pW, pH))
+        if (!hit) {
+          // Fallback: use first face (flat roof / no face found)
+          const face = faces[0]
+          if (!face) continue
+          const y = getFaceY(face, x, z)
+          result.push({
+            x: x + face.normal.x * PANEL_THICKNESS / 2,
+            y: y  + face.normal.y * PANEL_THICKNESS / 2,
+            z: z  + face.normal.z * PANEL_THICKNESS / 2,
+            tilt: face.tiltDeg, az: face.azimuthDeg, normal: face.normal,
+          })
+          continue
+        }
+        result.push({
+          x: x + hit.face.normal.x * PANEL_THICKNESS / 2,
+          y: hit.y + hit.face.normal.y * PANEL_THICKNESS / 2,
+          z: z + hit.face.normal.z * PANEL_THICKNESS / 2,
+          tilt: hit.face.tiltDeg, az: hit.face.azimuthDeg, normal: hit.face.normal,
+        })
+      }
+      return result
+    }
+
+    // ── Branch B: grid algorithm (no 2D positions available) ─────────────────
     const spacingX = spacingHCm / 100
     const spacingZ = spacingVCm / 100
 
@@ -128,45 +220,6 @@ export default function SolarPanels({ localPoly, roofType, pitch, azimuth, wallH
       )
     }
 
-    // Plane constant D = N·P0 using first face vertex in world space (Y + wallHeight)
-    function getFaceY(face: RoofFace, x: number, z: number): number {
-      if (Math.abs(face.normal.y) < 1e-6) return wallHeight
-      const arr = face.geometry.attributes.position.array as Float32Array
-      const D = face.normal.x * arr[0] + face.normal.y * (arr[1] + wallHeight) + face.normal.z * arr[2]
-      return (D - face.normal.x * x - face.normal.z * z) / face.normal.y
-    }
-
-    // Precompute face bounding boxes (fast early rejection)
-    const faceBBs = faces.map((face) => {
-      if (!face.geometry.boundingBox) face.geometry.computeBoundingBox()
-      return face.geometry.boundingBox!
-    })
-
-    // Precompute face XZ polygons for precise containment (handles trapezoids + triangles)
-    const facePolysXZ = faces.map((face): [number, number][] => {
-      const arr = face.geometry.attributes.position.array as Float32Array
-      if (arr.length === 9) {
-        // Triangle (3 verts)
-        return [[arr[0], arr[2]], [arr[3], arr[5]], [arr[6], arr[8]]]
-      }
-      // Quad stored as 2 triangles: [v0,v1,v2, v0,v2,v3] → unique verts at slots 0,1,2,5
-      return [[arr[0], arr[2]], [arr[3], arr[5]], [arr[6], arr[8]], [arr[15], arr[17]]]
-    })
-
-    // Point-in-polygon check in XZ space (ray casting)
-    function inFaceXZ(px: number, pz: number, poly: [number, number][]): boolean {
-      let inside = false
-      const n = poly.length
-      for (let i = 0, j = n - 1; i < n; j = i++) {
-        const xi = poly[i][0], zi = poly[i][1]
-        const xj = poly[j][0], zj = poly[j][1]
-        if ((zi > pz) !== (zj > pz) && px < ((xj - xi) * (pz - zi) / (zj - zi) + xi))
-          inside = !inside
-      }
-      return inside
-    }
-
-    // Grid aligned to polygon's axis-aligned bbox — mirrors 2D calpinage exactly
     const minX = points.reduce((m, p) => Math.min(m, p[0]), Infinity)
     const maxX = points.reduce((m, p) => Math.max(m, p[0]), -Infinity)
     const minZ = points.reduce((m, p) => Math.min(m, p[1]), Infinity)
@@ -186,8 +239,6 @@ export default function SolarPanels({ localPoly, roofType, pitch, azimuth, wallH
         if (result.length >= maxPool) break
         if (!panelContained(x, z)) continue
 
-        // Select face: all 4 footprint corners must lie inside the face polygon.
-        // This prevents straddling the ridge (gable) and wrong-face assignment (hip).
         let bestFace: RoofFace | null = null
         let bestY = -Infinity
         for (let fi = 0; fi < faces.length; fi++) {
@@ -195,10 +246,8 @@ export default function SolarPanels({ localPoly, roofType, pitch, azimuth, wallH
           if (Math.abs(face.normal.y) < 0.01) continue
           const bb = faceBBs[fi]
           const tol = 0.05
-          // Fast bbox rejection on center
           if (x < bb.min.x - tol || x > bb.max.x + tol) continue
           if (z < bb.min.z - tol || z > bb.max.z + tol) continue
-          // Precise: all 4 panel corners inside face polygon
           const poly = facePolysXZ[fi]
           if (!inFaceXZ(x - hx, z - hz, poly)) continue
           if (!inFaceXZ(x + hx, z - hz, poly)) continue
@@ -219,7 +268,7 @@ export default function SolarPanels({ localPoly, roofType, pitch, azimuth, wallH
     }
 
     return result
-  }, [localPoly, roofType, pitch, azimuth, wallHeight, panelCount, panelWidthMm, panelHeightMm, orientation, spacingHCm, spacingVCm])
+  }, [localPoly, roofType, pitch, azimuth, wallHeight, panelCount, panelWidthMm, panelHeightMm, orientation, spacingHCm, spacingVCm, panelPositions])
 
   const COLOR_REMOVED = new THREE.Color('#0F172A')
   const COLOR_GHOST = new THREE.Color('#22C55E')

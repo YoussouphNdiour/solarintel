@@ -17,6 +17,7 @@ export default function App() {
         setFromParent({
           polygon: e.data.polygon,
           panelCount: e.data.panelCount,
+          panelPositions: e.data.panelPositions,
           lat: e.data.lat,
           lon: e.data.lon,
           annualConsumption: e.data.annualConsumption,

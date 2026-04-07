@@ -37,6 +37,7 @@ export interface ParentMessage {
   type: 'INIT' | 'UPDATE_PANELS' | 'SET_AZIMUTH' | 'REQUEST_SCREENSHOTS' | 'REQUEST_SHADOW'
   polygon?: [number, number][]
   panelCount?: number
+  panelPositions?: [number, number][]   // lon/lat center of each active 2D panel
   lat?: number
   lon?: number
   annualConsumption?: number

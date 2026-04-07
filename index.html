@@ -2881,10 +2881,31 @@ function _send3DInit() {
 
     const centroid = _state.centroid || {};
 
+    // Collect panel center positions (lon/lat) from 2D calpinage layer
+    // so the 3D viewer renders exactly the same layout (holes included)
+    const panelPositions = [];
+    if (panelLayer && panelLayer.graphics) {
+        const all = panelLayer.graphics.toArray ? panelLayer.graphics.toArray() : [];
+        all.forEach(function(g) {
+            if (g.geometry && g.geometry.rings && g.geometry.rings[0]) {
+                const ring = g.geometry.rings[0];
+                // Remove closing vertex if present
+                const pts = (ring.length > 1 &&
+                    ring[0][0] === ring[ring.length - 1][0] &&
+                    ring[0][1] === ring[ring.length - 1][1])
+                    ? ring.slice(0, -1) : ring;
+                const cx = pts.reduce(function(s, p) { return s + p[0]; }, 0) / pts.length;
+                const cy = pts.reduce(function(s, p) { return s + p[1]; }, 0) / pts.length;
+                panelPositions.push([cx, cy]);
+            }
+        });
+    }
+
     frame.contentWindow.postMessage({
         type: 'INIT',
         polygon: firstRing,
         panelCount: _state.panelCount || 0,
+        panelPositions: panelPositions,
         lat: centroid.latitude  || 14.716,
         lon: centroid.longitude || -17.467,
         annualConsumption: _state.annualConsumption || 0,

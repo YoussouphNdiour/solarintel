@@ -7,6 +7,7 @@ interface AppState {
   // From parent iframe
   polygon: [number, number][] | null
   panelCount: number
+  panelPositions: [number, number][] | null   // exact 2D panel center positions (lon/lat)
   lat: number
   lon: number
   annualConsumption: number
@@ -64,6 +65,7 @@ interface AppState {
   setFromParent: (data: {
     polygon?: [number, number][]
     panelCount?: number
+    panelPositions?: [number, number][]
     lat?: number
     lon?: number
     annualConsumption?: number
@@ -104,6 +106,7 @@ interface AppState {
 export const useStore = create<AppState>((set, get) => ({
   polygon: null,
   panelCount: 12,
+  panelPositions: null,
   lat: 14.716,
   lon: -17.467,
   annualConsumption: 0,
@@ -148,19 +151,29 @@ export const useStore = create<AppState>((set, get) => ({
   // ── Actions ────────────────────────────────────────────────────────────────
 
   setFromParent: (data) =>
-    set((s) => ({
-      polygon: data.polygon ?? s.polygon,
-      panelCount: data.panelCount ?? s.panelCount,
-      lat: data.lat ?? s.lat,
-      lon: data.lon ?? s.lon,
-      annualConsumption: data.annualConsumption ?? s.annualConsumption,
-      installType: data.installType ?? s.installType,
-      panelWidthMm: data.panelWidthMm ?? s.panelWidthMm,
-      panelHeightMm: data.panelHeightMm ?? s.panelHeightMm,
-      orientation: data.orientation ?? s.orientation,
-      spacingHCm: data.spacingHCm ?? s.spacingHCm,
-      spacingVCm: data.spacingVCm ?? s.spacingVCm,
-    })),
+    set((s) => {
+      const newPositions = data.panelPositions ?? s.panelPositions
+      // If new positions arrive, panel count = their length; reset 3D-only removals
+      const newCount = data.panelPositions
+        ? data.panelPositions.length
+        : (data.panelCount ?? s.panelCount)
+      const newRemoved = data.panelPositions ? new Set<number>() : s.removedPanels
+      return {
+        polygon: data.polygon ?? s.polygon,
+        panelCount: newCount,
+        panelPositions: newPositions,
+        removedPanels: newRemoved,
+        lat: data.lat ?? s.lat,
+        lon: data.lon ?? s.lon,
+        annualConsumption: data.annualConsumption ?? s.annualConsumption,
+        installType: data.installType ?? s.installType,
+        panelWidthMm: data.panelWidthMm ?? s.panelWidthMm,
+        panelHeightMm: data.panelHeightMm ?? s.panelHeightMm,
+        orientation: data.orientation ?? s.orientation,
+        spacingHCm: data.spacingHCm ?? s.spacingHCm,
+        spacingVCm: data.spacingVCm ?? s.spacingVCm,
+      }
+    }),
 
   setPanelCount: (count) => set({ panelCount: count, removedPanels: new Set() }),
 
