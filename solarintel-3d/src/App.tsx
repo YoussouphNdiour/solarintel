@@ -33,6 +33,9 @@ export default function App() {
           useStore.getState().setPanelCount(e.data.panelCount)
         }
       }
+      if (e.data.type === 'SET_AZIMUTH' && typeof e.data.azimuth === 'number') {
+        useStore.getState().setAzimuth(e.data.azimuth)
+      }
     }
 
     window.addEventListener('message', handleMessage)

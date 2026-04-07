@@ -207,26 +207,59 @@ export default function ControlsPanel() {
               </div>
 
               <Slider label="Inclinaison" value={pitch} min={0} max={45} unit="°" onChange={setPitch} />
-              <Slider label="Azimut" value={azimuth} min={0} max={360} unit="°" onChange={setAzimuth} />
-              <Slider label="Hauteur des murs" value={wallHeight} min={2} max={10} step={0.5} unit=" m" onChange={setWallHeight} />
-
-              {/* Azimuth compass indicator */}
-              <div className="flex items-center gap-2 mt-1">
-                <div className="relative w-8 h-8 flex-shrink-0">
-                  <div className="absolute inset-0 rounded-full border border-[#334155]" />
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <div className="w-0.5 h-3 bg-[#0EA5E9] origin-bottom rounded-full"
-                      style={{ transform: `rotate(${azimuth}deg)`, transformOrigin: '50% 100%' }}
-                    />
-                  </div>
-                  <span className="absolute -top-1 left-1/2 -translate-x-1/2 text-[8px] text-[#475569]">N</span>
+              {/* Azimuth quick-presets */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-[#94A3B8] text-xs">Azimut</span>
+                  <input
+                    type="number" min={0} max={360} step={1} value={Math.round(azimuth)}
+                    onChange={(e) => setAzimuth(((+e.target.value % 360) + 360) % 360)}
+                    className="w-16 bg-[#0F172A] border border-[#334155] text-white text-xs font-mono rounded px-2 py-1 text-right"
+                  />
                 </div>
-                <span className="text-[#64748B] text-[10px]">
-                  {azimuth === 180 ? 'Plein Sud (optimal)' :
-                   azimuth < 135 || azimuth > 225 ? 'Sous-optimal — préférer ≈180°' :
-                   'Proche du Sud'}
-                </span>
+                <div className="grid grid-cols-8 gap-0.5">
+                  {([
+                    { label: 'N', az: 0 }, { label: 'NE', az: 45 }, { label: 'E', az: 90 }, { label: 'SE', az: 135 },
+                    { label: 'S', az: 180 }, { label: 'SO', az: 225 }, { label: 'O', az: 270 }, { label: 'NO', az: 315 },
+                  ] as { label: string; az: number }[]).map(({ label, az }) => (
+                    <button
+                      key={az}
+                      onClick={() => setAzimuth(az)}
+                      title={`Azimut ${az}°`}
+                      className={`py-1 rounded text-[9px] font-medium transition-all ${
+                        Math.abs(azimuth - az) < 23
+                          ? 'bg-[#0EA5E9] text-white'
+                          : 'bg-[#0F172A] text-[#64748B] hover:text-white border border-[#334155] hover:border-[#0EA5E9]'
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                <input
+                  type="range" min={0} max={360} step={1} value={azimuth}
+                  onChange={(e) => setAzimuth(+e.target.value)}
+                  className="w-full h-1.5 rounded-full accent-[#0EA5E9] cursor-pointer"
+                />
+                <div className="flex items-center gap-2">
+                  <div className="relative w-8 h-8 flex-shrink-0">
+                    <div className="absolute inset-0 rounded-full border border-[#334155]" />
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <div className="w-0.5 h-3 bg-[#0EA5E9] origin-bottom rounded-full"
+                        style={{ transform: `rotate(${azimuth}deg)`, transformOrigin: '50% 100%' }}
+                      />
+                    </div>
+                    <span className="absolute -top-1 left-1/2 -translate-x-1/2 text-[8px] text-[#475569]">N</span>
+                  </div>
+                  <span className="text-[#64748B] text-[10px]">
+                    {azimuth === 180 ? 'Plein Sud (optimal)' :
+                     Math.abs(azimuth - 180) <= 45 ? 'Proche du Sud' :
+                     Math.abs(azimuth - 90) <= 45 || Math.abs(azimuth - 270) <= 45 ? 'Est/Ouest — sous-optimal' :
+                     'Sous-optimal — préférer ≈180°'}
+                  </span>
+                </div>
               </div>
+              <Slider label="Hauteur des murs" value={wallHeight} min={2} max={10} step={0.5} unit=" m" onChange={setWallHeight} />
             </Section>
 
             <div className="h-px bg-[#334155]" />

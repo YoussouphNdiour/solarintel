@@ -34,7 +34,7 @@ export interface PanelInfo {
 }
 
 export interface ParentMessage {
-  type: 'INIT' | 'UPDATE_PANELS'
+  type: 'INIT' | 'UPDATE_PANELS' | 'SET_AZIMUTH'
   polygon?: [number, number][]
   panelCount?: number
   lat?: number
@@ -46,6 +46,7 @@ export interface ParentMessage {
   orientation?: 'portrait' | 'landscape'
   spacingHCm?: number
   spacingVCm?: number
+  azimuth?: number
 }
 
 export interface ChildMessage {
