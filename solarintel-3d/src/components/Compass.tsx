@@ -7,8 +7,8 @@ export default function Compass() {
   const roofAngle = azimuth - 180  // panels face this direction
 
   return (
-    <div className="absolute bottom-16 right-4 z-20 select-none">
-      <div className="relative w-14 h-14">
+    <div className="absolute bottom-4 left-4 z-20 select-none opacity-70 hover:opacity-100 transition-opacity">
+      <div className="relative w-10 h-10">
         {/* Outer ring */}
         {/* pointer-events-none prevents browser extension SVGAnimatedString className errors */}
         <svg viewBox="0 0 56 56" className="w-full h-full drop-shadow-lg" style={{ pointerEvents: 'none' }}>
@@ -70,8 +70,8 @@ export default function Compass() {
         </svg>
 
         {/* Label below */}
-        <div className="absolute -bottom-5 left-1/2 -translate-x-1/2 text-[#475569] text-[9px] whitespace-nowrap">
-          Az. {azimuth}°
+        <div className="absolute -bottom-4 left-1/2 -translate-x-1/2 text-[#475569] text-[8px] whitespace-nowrap">
+          {azimuth}°
         </div>
       </div>
     </div>
