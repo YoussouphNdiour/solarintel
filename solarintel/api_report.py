@@ -132,6 +132,10 @@ class ReportRequest(BaseModel):
     inverter_power_kva: float = 0          # capacité nominale onduleur (kVA)
     # Capture carte (screenshot ArcGIS base64)
     map_screenshot_b64: str = ""   # data URL PNG "data:image/png;base64,..."
+    # Captures 3D viewer (normal + irradiance)
+    view3d_screenshots_b64: list[str] = []   # data URLs for 3D views: [normal, irradiance]
+    obstacles_shading_pct: float = 0.0        # obstacle shading % from 3D viewer
+    obstacles_list: list[dict] = []           # [{"type": "chimney", "count": 2}, ...]
     # Calepinage
     polygon_area_m2: float = 0             # surface totale de la zone tracée (m²)
     panel_width_mm: float = 1134           # largeur panneau (mm)
@@ -457,6 +461,31 @@ def _build_pdf(req: ReportRequest) -> bytes:
             logger.warning("Impossible de décoder la capture carte : %s", _exc)
             _map_img_path = None
 
+    # ── 3D screenshots → temp PNG files ──────────────────────────────────────
+    _view3d_tmp_paths: list[str] = []
+    for _i3d, _data_url in enumerate(req.view3d_screenshots_b64[:2]):
+        try:
+            import base64 as _b64_3d
+            raw3d = _data_url
+            if "," in raw3d:
+                raw3d = raw3d.split(",", 1)[1]
+            _fd3d, _tmp3d = tempfile.mkstemp(suffix=".png")
+            os.write(_fd3d, _b64_3d.b64decode(raw3d))
+            os.close(_fd3d)
+            _view3d_tmp_paths.append(_tmp3d)
+        except Exception as _exc3d:
+            logger.warning("Impossible de décoder la capture 3D %d : %s", _i3d, _exc3d)
+
+    # Attach 3D data to report for generator
+    if _view3d_tmp_paths or req.obstacles_shading_pct > 0:
+        report.view3d_data = {
+            "img_paths": _view3d_tmp_paths,
+            "obstacles_shading_pct": req.obstacles_shading_pct,
+            "obstacles_list": req.obstacles_list,
+        }
+    else:
+        report.view3d_data = None
+
     if req.polygon_area_m2 > 0 and req.panel_count > 0:
         pw = req.panel_width_mm  / 1000
         ph = req.panel_height_mm / 1000
@@ -552,6 +581,11 @@ def _build_pdf(req: ReportRequest) -> bytes:
         if _map_img_path:
             try:
                 os.unlink(_map_img_path)
+            except OSError:
+                pass
+        for _p3d in _view3d_tmp_paths:
+            try:
+                os.unlink(_p3d)
             except OSError:
                 pass
 

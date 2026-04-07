@@ -553,6 +553,9 @@ class ReportGenerator:
         if getattr(r, "calepinage", None):
             self._add_calepinage(story, sec)
             sec += 1
+        if getattr(r, "view3d_data", None):
+            self._add_view3d(story, sec)
+            sec += 1
         self._add_equipment(story, sec);  sec += 1
         self._add_qa(story, sec);         sec += 1
         self._add_appendix(story, sec)
@@ -665,6 +668,26 @@ class ReportGenerator:
             ["Dégradation thermique",  f"{sim.temperature_loss_pct:.1f}"],
             ["Total pertes estimées",  f"{sim.total_losses_pct:.1f}"],
         ]))
+
+        # Obstacle shading from 3D viewer
+        view3d = getattr(self.report, "view3d_data", None)
+        if view3d:
+            shading_pct = view3d.get("obstacles_shading_pct", 0.0)
+            obstacles   = view3d.get("obstacles_list", [])
+            if shading_pct > 0:
+                obs_detail = (
+                    f"{len(obstacles)} obstacle(s) identifié(s)"
+                    if obstacles
+                    else "calculé depuis la vue 3D"
+                )
+                note_style = ParagraphStyle(
+                    "shading_note", fontName="Helvetica-Bold", fontSize=10,
+                    textColor=C_AMBER, spaceAfter=3 * mm, spaceBefore=2 * mm,
+                )
+                story.append(Paragraph(
+                    f"Pertes ombrage obstacles : {shading_pct:.1f}%  ({obs_detail})",
+                    note_style,
+                ))
 
     # ── Section 4 : Analyse économique ───────────────────────────────────────
 
@@ -1082,6 +1105,76 @@ class ReportGenerator:
             "La capture satellite du site est disponible via la vue carte de l'application.",
             body_sm,
         ))
+
+    # ── Section Vue 3D ───────────────────────────────────────────────────────
+
+    def _add_view3d(self, story: list, sec: int = 6) -> None:
+        """Insère la section Vue 3D : captures normal + irradiance + résumé obstacles."""
+        r = self.report
+        view3d = getattr(r, "view3d_data", None)
+        if not view3d:
+            return
+
+        img_paths        = view3d.get("img_paths", [])
+        shading_pct      = view3d.get("obstacles_shading_pct", 0.0)
+        obstacles        = view3d.get("obstacles_list", [])
+
+        story.append(PageBreak())
+        story.append(_section_header(f"{sec}. Vue 3D du système"))
+
+        # ── Images 3D côte à côte ─────────────────────────────────────────────
+        view_labels = ["Vue 3D — Normal", "Vue 3D — Irradiance / Ombrage"]
+        valid_imgs = []
+        for i, path in enumerate(img_paths):
+            if path and os.path.isfile(path):
+                try:
+                    img = Image(path, width=CONTENT_W * 0.48, height=CONTENT_W * 0.30,
+                                kind="proportional")
+                    img.hAlign = "CENTER"
+                    label = view_labels[i] if i < len(view_labels) else f"Vue 3D {i + 1}"
+                    valid_imgs.append((img, label))
+                except Exception as _ei:
+                    logger.warning("Impossible de charger l'image 3D %d : %s", i, _ei)
+
+        if valid_imgs:
+            cap_style = ParagraphStyle(
+                "cap3d", fontName="Helvetica", fontSize=8,
+                textColor=C_TEXT_SEC, alignment=TA_CENTER, spaceAfter=2 * mm,
+            )
+            if len(valid_imgs) == 2:
+                col_w = CONTENT_W / 2
+                img_row   = [[valid_imgs[0][0], valid_imgs[1][0]]]
+                label_row = [[Paragraph(valid_imgs[0][1], cap_style),
+                              Paragraph(valid_imgs[1][1], cap_style)]]
+                tbl_imgs   = Table(img_row,   colWidths=[col_w, col_w])
+                tbl_labels = Table(label_row, colWidths=[col_w, col_w])
+                for t in (tbl_imgs, tbl_labels):
+                    t.setStyle(TableStyle([
+                        ("ALIGN",  (0, 0), (-1, -1), "CENTER"),
+                        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                    ]))
+                story.append(tbl_imgs)
+                story.append(tbl_labels)
+            else:
+                img, lbl = valid_imgs[0]
+                story.append(img)
+                story.append(Paragraph(lbl, cap_style))
+
+        # ── Résumé ombrage obstacles ──────────────────────────────────────────
+        if shading_pct > 0 or obstacles:
+            story.append(Spacer(1, 4 * mm))
+            story.append(_subsection_header(f"{sec}.1  Ombrage par obstacles"))
+
+            rows = [["Paramètre", "Valeur"]]
+            if shading_pct > 0:
+                rows.append(["Pertes ombrage obstacles", f"{shading_pct:.1f} %"])
+            if obstacles:
+                for obs in obstacles:
+                    obs_type  = obs.get("type", "obstacle")
+                    obs_count = obs.get("count", 1)
+                    rows.append([f"Obstacle — {obs_type}", f"×{obs_count}"])
+            if len(rows) > 1:
+                story.append(_data_table(rows))
 
     # ── Section Équipements ───────────────────────────────────────────────────
 

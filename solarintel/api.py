@@ -113,6 +113,7 @@ class SimulateRequest(BaseModel):
     # Toiture (depuis vue 3D ou défaut latitude)
     surface_tilt: float | None = None   # inclinaison panneaux en degrés (None → utilise latitude)
     surface_azimuth: float = 180        # azimut (0=N, 90=E, 180=S, 270=W)
+    obstacles_shading_pct: float = 0.0  # % irradiance loss from obstacles (computed by 3D viewer)
 
 
 class SimulateResponse(BaseModel):
@@ -234,6 +235,12 @@ def simulate(req: SimulateRequest):
     if len(monthly_production) < 12:
         monthly_production += [0.0] * (12 - len(monthly_production))
 
+    # Apply obstacle shading from 3D viewer (additional loss)
+    if req.obstacles_shading_pct > 0:
+        shading_factor = 1.0 - min(req.obstacles_shading_pct / 100.0, 0.5)  # cap at 50%
+        net_annual_kwh *= shading_factor
+        monthly_production = [round(v * shading_factor, 1) for v in monthly_production]
+
     peak_power_kwc = req.panel_count * req.panel_power_wc / 1000.0
     specific_yield = net_annual_kwh / peak_power_kwc if peak_power_kwc > 0 else 0
     capacity_factor = (net_annual_kwh / (peak_power_kwc * 8760) * 100) if peak_power_kwc > 0 else 0
@@ -262,6 +269,7 @@ def simulate(req: SimulateRequest):
             "capacity_factor_pct": round(capacity_factor, 1),
             "monthly_production_kwh": monthly_production,
             "losses_breakdown": {k: round(v * 100, 1) for k, v in LOSSES.items()},
+            "obstacles_shading_pct": round(req.obstacles_shading_pct, 1),
         },
         economics=economics,
         system={
@@ -375,6 +383,9 @@ def _fallback_response(req: SimulateRequest) -> SimulateResponse:
     peak_power_kwc = req.panel_count * req.panel_power_wc / 1000.0
     net_annual_kwh = peak_power_kwc * 1650 * _total_loss_factor()
 
+    if req.obstacles_shading_pct > 0:
+        net_annual_kwh *= (1.0 - min(req.obstacles_shading_pct / 100.0, 0.5))
+
     economics = _compute_economics(
         net_annual_kwh=net_annual_kwh,
         peak_power_kwc=peak_power_kwc,
@@ -399,6 +410,7 @@ def _fallback_response(req: SimulateRequest) -> SimulateResponse:
             "capacity_factor_pct": round(net_annual_kwh / (peak_power_kwc * 8760) * 100, 1) if peak_power_kwc > 0 else 0,
             "monthly_production_kwh": monthly,
             "losses_breakdown": {k: round(v * 100, 1) for k, v in LOSSES.items()},
+            "obstacles_shading_pct": round(req.obstacles_shading_pct, 1),
         },
         economics=economics,
         system={
