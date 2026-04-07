@@ -36,6 +36,9 @@ export default function App() {
       if (e.data.type === 'SET_AZIMUTH' && typeof e.data.azimuth === 'number') {
         useStore.getState().setAzimuth(e.data.azimuth)
       }
+      if (e.data.type === 'REQUEST_SCREENSHOTS') {
+        useStore.getState().requestScreenshots()
+      }
     }
 
     window.addEventListener('message', handleMessage)

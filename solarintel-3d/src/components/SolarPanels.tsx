@@ -276,6 +276,43 @@ export default function SolarPanels({ localPoly, roofType, pitch, azimuth, wallH
     if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
   }, [panels, selectedPanel, removedPanels, irradianceMode, simHour, obstacles, sceneMode, panelCount, lat, lon, simDate])
 
+  // Compute and report shadow factor to parent whenever obstacles or panels change
+  useEffect(() => {
+    if (obstacles.length === 0) {
+      window.parent.postMessage({ type: 'SHADOW_FACTOR', shadingPct: 0, obstacleCount: 0 }, '*')
+      return
+    }
+
+    // Use equinox noon for representative shading
+    const equinoxDate = new Date(new Date().getFullYear(), 2, 21)
+    const sunPos = getSunPosition(lat, lon, equinoxDate, 12)
+    if (!sunPos || sunPos.elevation <= 0) {
+      window.parent.postMessage({ type: 'SHADOW_FACTOR', shadingPct: 0, obstacleCount: obstacles.length }, '*')
+      return
+    }
+
+    const activePanels = panels.slice(0, panelCount).filter((_, i) => !removedPanels.has(i))
+    if (activePanels.length === 0) return
+
+    let shadedCount = 0
+    for (const p of activePanels) {
+      const irr = computeIrradiance(p.x, p.y, p.z, p.normal, obstacles, sunPos.azimuth, sunPos.elevation)
+      const elRad = (sunPos.elevation * Math.PI) / 180
+      const azRad = (sunPos.azimuth * Math.PI) / 180
+      const sunDir = new THREE.Vector3(
+        Math.cos(elRad) * Math.sin(azRad),
+        Math.sin(elRad),
+        -Math.cos(elRad) * Math.cos(azRad)
+      ).normalize()
+      const incidence = Math.max(0, p.normal.dot(sunDir))
+      const unshaded = Math.min(1, incidence * (0.5 + 0.5 * Math.sin(elRad)))
+      if (unshaded > 0.01 && irr < unshaded * 0.5) shadedCount++
+    }
+
+    const shadingPct = activePanels.length > 0 ? (shadedCount / activePanels.length) * 100 : 0
+    window.parent.postMessage({ type: 'SHADOW_FACTOR', shadingPct: Math.round(shadingPct * 10) / 10, obstacleCount: obstacles.length }, '*')
+  }, [panels, obstacles, panelCount, removedPanels, lat, lon])
+
   function handleClick(e: ThreeEvent<MouseEvent>) {
     e.stopPropagation()
 

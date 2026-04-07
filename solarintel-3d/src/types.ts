@@ -34,7 +34,7 @@ export interface PanelInfo {
 }
 
 export interface ParentMessage {
-  type: 'INIT' | 'UPDATE_PANELS' | 'SET_AZIMUTH'
+  type: 'INIT' | 'UPDATE_PANELS' | 'SET_AZIMUTH' | 'REQUEST_SCREENSHOTS' | 'REQUEST_SHADOW'
   polygon?: [number, number][]
   panelCount?: number
   lat?: number
@@ -50,9 +50,15 @@ export interface ParentMessage {
 }
 
 export interface ChildMessage {
-  type: 'TILT_AZIMUTH' | 'READY' | 'REMOVE_PANEL' | 'ADD_PANEL'
+  type: 'TILT_AZIMUTH' | 'READY' | 'REMOVE_PANEL' | 'ADD_PANEL' | 'SCREENSHOT_3D' | 'SHADOW_FACTOR'
   tilt?: number
   azimuth?: number
+  // SCREENSHOT_3D
+  dataUrl?: string
+  mode?: string   // 'normal' | 'irradiance'
+  // SHADOW_FACTOR
+  shadingPct?: number
+  obstacleCount?: number
 }
 
 export type ObstacleType = 'chimney' | 'ac' | 'tank' | 'tree' | 'building' | 'antenna' | 'mast'

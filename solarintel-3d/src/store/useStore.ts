@@ -98,6 +98,7 @@ interface AppState {
   tickSimulation: () => void
   setGlCanvas: (canvas: HTMLCanvasElement) => void
   takeScreenshot: () => void
+  requestScreenshots: () => void
 }
 
 export const useStore = create<AppState>((set, get) => ({
@@ -241,5 +242,33 @@ export const useStore = create<AppState>((set, get) => ({
     link.download = `solarintel-3d-${new Date().toISOString().slice(0, 10)}.png`
     link.href = _glCanvas.toDataURL('image/png')
     link.click()
+  },
+
+  requestScreenshots: () => {
+    const { _glCanvas, irradianceMode, toggleIrradiance } = get()
+    if (!_glCanvas) return
+    const wasIrradiance = irradianceMode
+    if (wasIrradiance) {
+      toggleIrradiance()
+      setTimeout(() => {
+        const normalUrl = _glCanvas.toDataURL('image/png')
+        window.parent.postMessage({ type: 'SCREENSHOT_3D', dataUrl: normalUrl, mode: 'normal' }, '*')
+        toggleIrradiance()
+        setTimeout(() => {
+          const irrUrl = _glCanvas.toDataURL('image/png')
+          window.parent.postMessage({ type: 'SCREENSHOT_3D', dataUrl: irrUrl, mode: 'irradiance' }, '*')
+          toggleIrradiance() // restore
+        }, 300)
+      }, 300)
+    } else {
+      const normalUrl = _glCanvas.toDataURL('image/png')
+      window.parent.postMessage({ type: 'SCREENSHOT_3D', dataUrl: normalUrl, mode: 'normal' }, '*')
+      toggleIrradiance()
+      setTimeout(() => {
+        const irrUrl = _glCanvas.toDataURL('image/png')
+        window.parent.postMessage({ type: 'SCREENSHOT_3D', dataUrl: irrUrl, mode: 'irradiance' }, '*')
+        toggleIrradiance() // restore OFF
+      }, 300)
+    }
   },
 }))
