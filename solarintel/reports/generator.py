@@ -55,9 +55,9 @@ _THEME: dict = {"primary": C_PRIMARY, "secondary": C_PRIMARY_DARK}
 
 def _fmt(value: float, decimals: int = 0, suffix: str = "") -> str:
     if decimals == 0:
-        s = f"{value:,.0f}".replace(",", "\u202f")
+        s = f"{value:,.0f}".replace(",", " ")
     else:
-        s = f"{value:,.{decimals}f}".replace(",", "\u202f")
+        s = f"{value:,.{decimals}f}".replace(",", " ")
     return f"{s}{suffix}"
 
 

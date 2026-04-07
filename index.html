@@ -2056,6 +2056,8 @@ async function generateReport() {
             const qty = +(document.getElementById('inverterQty')?.value || 1);
             return inv ? inv.power_kva * qty : 0;
         })(),
+        // Mode de travail
+        app_mode:        window._appMode || 'consommation',
         // Métadonnées rapport
         company_name:    document.getElementById('companyName')?.value  || 'SolarIntel',
         report_title:    document.getElementById('reportTitle')?.value  || 'Étude de dimensionnement PV',

@@ -111,6 +111,7 @@ class ReportRequest(BaseModel):
     capex_total_xof: float = 0
     install_pct: float = 15
     install_type: str = "autoconsommation"
+    app_mode: str = "consommation"     # "consommation" | "bilan"
     # Métadonnées rapport
     company_name: str = "SolarIntel"
     report_title: str = "Étude de dimensionnement PV"
@@ -170,7 +171,7 @@ async def generate_report(req: ReportRequest):
 # ---------------------------------------------------------------------------
 
 def _fmt(value: float) -> str:
-    return f"{value:,.0f}".replace(",", "\u202f")
+    return f"{value:,.0f}".replace(",", " ")
 
 
 def _build_cashflow(capex: float, annual_savings: float, years: int = 25) -> list[float]:
@@ -253,19 +254,45 @@ def _build_pdf(req: ReportRequest) -> bytes:
     # ── AI recommendations ───────────────────────────────────────────────────
     ai_recs = _run_crewai(req) or _static_recommendations(req)
 
-    # ── Executive summary ────────────────────────────────────────────────────
-    exec_summary = (
-        f"Projet : {req.report_title}\n"
-        f"Client : {req.client_name or '—'}\n"
-        f"Site   : {req.latitude:.4f}°N, {req.longitude:.4f}°E\n\n"
-        f"Système {peak_kwc:.2f} kWc — {req.panel_count} panneaux "
-        f"{req.panel_brand} {req.panel_model}.\n"
-        f"Production annuelle estimée : {_fmt(req.kpi_production_kwh)} kWh/an "
-        f"(couverture {req.kpi_coverage_pct:.0f}%).\n"
-        f"Économie annuelle (année 1) : {_fmt(req.kpi_savings_xof)} XOF.\n"
-        f"Retour sur investissement   : {req.kpi_payback_years:.1f} ans.\n"
-        f"CAPEX total estimé          : {_fmt(total_capex)} XOF.\n"
-    )
+    # ── Executive summary (contenu adapté au mode de travail) ──────────────
+    is_bilan = req.app_mode == "bilan"
+    if is_bilan:
+        # Mode Bilan : départ appareils → consommation calculée → dimensionnement
+        daily_kwh = sum(
+            a.qty * a.power * (a.hoursDay + a.hoursNight) / 1000
+            for a in req.appliances
+        )
+        exec_summary = (
+            f"Projet : {req.report_title}\n"
+            f"Client : {req.client_name or '—'}\n"
+            f"Site   : {req.latitude:.4f}°N, {req.longitude:.4f}°E\n\n"
+            f"Mode de travail : Bilan énergétique — dimensionnement à partir du relevé des appareils.\n\n"
+            f"Consommation journalière relevée : {daily_kwh:.2f} kWh/jour "
+            f"({daily_kwh * 365:.0f} kWh/an — {len(req.appliances)} appareil(s) saisi(s)).\n"
+            f"Système dimensionné : {peak_kwc:.2f} kWc — {req.panel_count} panneaux "
+            f"{req.panel_brand} {req.panel_model}.\n"
+            f"Production annuelle estimée : {_fmt(req.kpi_production_kwh)} kWh/an "
+            f"(couverture {req.kpi_coverage_pct:.0f}% de la consommation).\n"
+            f"Économie annuelle (année 1) : {_fmt(req.kpi_savings_xof)} XOF.\n"
+            f"Retour sur investissement   : {req.kpi_payback_years:.1f} ans.\n"
+            f"CAPEX total estimé          : {_fmt(total_capex)} XOF.\n"
+        )
+    else:
+        # Mode Consommation : départ consommation mensuelle/annuelle connue
+        exec_summary = (
+            f"Projet : {req.report_title}\n"
+            f"Client : {req.client_name or '—'}\n"
+            f"Site   : {req.latitude:.4f}°N, {req.longitude:.4f}°E\n\n"
+            f"Mode de travail : Consommation — dimensionnement à partir de la consommation déclarée.\n\n"
+            f"Consommation annuelle de référence : {_fmt(req.annual_consumption_kwh or 0)} kWh/an.\n"
+            f"Système dimensionné : {peak_kwc:.2f} kWc — {req.panel_count} panneaux "
+            f"{req.panel_brand} {req.panel_model}.\n"
+            f"Production annuelle estimée : {_fmt(req.kpi_production_kwh)} kWh/an "
+            f"(couverture {req.kpi_coverage_pct:.0f}%).\n"
+            f"Économie annuelle (année 1) : {_fmt(req.kpi_savings_xof)} XOF.\n"
+            f"Retour sur investissement   : {req.kpi_payback_years:.1f} ans.\n"
+            f"CAPEX total estimé          : {_fmt(total_capex)} XOF.\n"
+        )
 
     # ── QA matrix ────────────────────────────────────────────────────────────
     qa_checks = [
@@ -324,7 +351,11 @@ def _build_pdf(req: ReportRequest) -> bytes:
         project_name=req.report_title,
         company_name=req.company_name,
         report_title=req.report_title,
-        executive_summary=exec_summary + "\n\nBilan énergétique :\n" + "\n".join(appliance_lines),
+        executive_summary=(
+            exec_summary + "\n\nBilan énergétique :\n" + "\n".join(appliance_lines)
+            if is_bilan and appliance_lines
+            else exec_summary
+        ),
         system=SystemConfig(
             panel_brand=req.panel_brand,
             panel_model=req.panel_model,

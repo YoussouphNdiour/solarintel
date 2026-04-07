@@ -140,14 +140,31 @@ export default function SolarPanels({ localPoly, roofType, pitch, azimuth, wallH
       return inside
     }
 
-    // Helper: find best roof face for a given XZ position
-    function pickFace(x: number, z: number, tol = 0.5): { face: RoofFace; y: number } | null {
+    // Helper: find best roof face for a given XZ position.
+    // Pass 1 — strict: center must be inside the face polygon (prevents gable/hip misassignment).
+    // Pass 2 — loose: bbox fallback with small tolerance for panels at roof edges.
+    function pickFace(x: number, z: number): { face: RoofFace; y: number } | null {
       let bestFace: RoofFace | null = null
       let bestY = -Infinity
+      // Pass 1: strict polygon containment
       for (let fi = 0; fi < faces.length; fi++) {
         const face = faces[fi]
         if (Math.abs(face.normal.y) < 0.01) continue
         const bb = faceBBs[fi]
+        const tol = 0.05
+        if (x < bb.min.x - tol || x > bb.max.x + tol) continue
+        if (z < bb.min.z - tol || z > bb.max.z + tol) continue
+        if (!inFaceXZ(x, z, facePolysXZ[fi])) continue
+        const y = getFaceY(face, x, z)
+        if (y >= wallHeight - 0.1 && y > bestY) { bestY = y; bestFace = face }
+      }
+      if (bestFace) return { face: bestFace, y: bestY }
+      // Pass 2: fallback for edge panels (bbox with 0.3 m tolerance, no polygon check)
+      for (let fi = 0; fi < faces.length; fi++) {
+        const face = faces[fi]
+        if (Math.abs(face.normal.y) < 0.01) continue
+        const bb = faceBBs[fi]
+        const tol = 0.3
         if (x < bb.min.x - tol || x > bb.max.x + tol) continue
         if (z < bb.min.z - tol || z > bb.max.z + tol) continue
         const y = getFaceY(face, x, z)
@@ -197,7 +214,7 @@ export default function SolarPanels({ localPoly, roofType, pitch, azimuth, wallH
         const x = (lon2d - centLon) * Math.cos(lat0Rad) * EARTH_RADIUS * Math.PI / 180
         const z = (lat2d - centLat) * EARTH_RADIUS * Math.PI / 180
 
-        const hit = pickFace(x, z, Math.max(pW, pH))
+        const hit = pickFace(x, z)
         if (!hit) {
           // Fallback: use first face (flat roof / no face found)
           const face = faces[0]
