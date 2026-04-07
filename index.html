@@ -2780,7 +2780,7 @@ function _calpinageOneZone(zone, zoneIdx) {
 
     const hw = panelW_m / 2;
     const hh = panelH_m / 2;
-    const panels = [];
+    const panels = [];  // { geom, cx, cy } — center lon/lat stored for 3D sync
 
     for (let gx = -diag + cellW_m / 2; gx <= diag && panels.length < MAX_PANELS; gx += cellW_m) {
         for (let gy = -diag + cellH_m / 2; gy <= diag && panels.length < MAX_PANELS; gy += cellH_m) {
@@ -2788,22 +2788,23 @@ function _calpinageOneZone(zone, zoneIdx) {
             const c2 = localToLonLat(gx + hw, gy - hh);
             const c3 = localToLonLat(gx + hw, gy + hh);
             const c4 = localToLonLat(gx - hw, gy + hh);
+            const center = localToLonLat(gx, gy);
             const panelPoly = new PolygonRef({
                 rings: [[c1, c2, c3, c4, c1]],
                 spatialReference: { wkid: 4326 },
             });
             if (geometryEngineRef.contains(polygon, panelPoly) &&
                 !holes.some(function(h) { return geometryEngineRef.intersects(h, panelPoly); })) {
-                panels.push(panelPoly);
+                panels.push({ geom: panelPoly, cx: center[0], cy: center[1] });
             }
         }
     }
 
-    panels.forEach(function(panelGeom) {
+    panels.forEach(function(p) {
         panelLayer.add(new GraphicRef({
-            geometry: panelGeom,
+            geometry: p.geom,
             symbol: sym,
-            attributes: { panelIndex: panelLayer.graphics.length + 1, zone: zoneIdx },
+            attributes: { panelIndex: panelLayer.graphics.length + 1, zone: zoneIdx, _cx: p.cx, _cy: p.cy },
         }));
     });
 
@@ -2882,21 +2883,14 @@ function _send3DInit() {
     const centroid = _state.centroid || {};
 
     // Collect panel center positions (lon/lat) from 2D calpinage layer
-    // so the 3D viewer renders exactly the same layout (holes included)
+    // _cx/_cy are stored in attributes at creation time — no ring parsing needed
     const panelPositions = [];
     if (panelLayer && panelLayer.graphics) {
         const all = panelLayer.graphics.toArray ? panelLayer.graphics.toArray() : [];
         all.forEach(function(g) {
-            if (g.geometry && g.geometry.rings && g.geometry.rings[0]) {
-                const ring = g.geometry.rings[0];
-                // Remove closing vertex if present
-                const pts = (ring.length > 1 &&
-                    ring[0][0] === ring[ring.length - 1][0] &&
-                    ring[0][1] === ring[ring.length - 1][1])
-                    ? ring.slice(0, -1) : ring;
-                const cx = pts.reduce(function(s, p) { return s + p[0]; }, 0) / pts.length;
-                const cy = pts.reduce(function(s, p) { return s + p[1]; }, 0) / pts.length;
-                panelPositions.push([cx, cy]);
+            const a = g.attributes || {};
+            if (typeof a._cx === 'number' && typeof a._cy === 'number') {
+                panelPositions.push([a._cx, a._cy]);
             }
         });
     }
@@ -3180,7 +3174,7 @@ function addPanelAt(mapPoint) {
     const g = new GraphicRef({
         geometry: panelPoly,
         symbol: { type:'simple-fill', color:[14,165,233,0.25], outline:{color:[14,165,233,0.8],width:0.75} },
-        attributes: { panelIndex: idx, manual: true },
+        attributes: { panelIndex: idx, manual: true, _cx: lon, _cy: lat },
     });
 
     panelLayer.add(g);

@@ -152,12 +152,14 @@ export const useStore = create<AppState>((set, get) => ({
 
   setFromParent: (data) =>
     set((s) => {
-      const newPositions = data.panelPositions ?? s.panelPositions
-      // If new positions arrive, panel count = their length; reset 3D-only removals
-      const newCount = data.panelPositions
-        ? data.panelPositions.length
+      const hasPositions = Array.isArray(data.panelPositions) && data.panelPositions.length > 0
+      const newPositions = hasPositions ? data.panelPositions! : s.panelPositions
+      // Use position count when real positions are available; otherwise use explicit panelCount
+      const newCount = hasPositions
+        ? data.panelPositions!.length
         : (data.panelCount ?? s.panelCount)
-      const newRemoved = data.panelPositions ? new Set<number>() : s.removedPanels
+      // Reset 3D-only panel removals only when fresh 2D positions arrive
+      const newRemoved = hasPositions ? new Set<number>() : s.removedPanels
       return {
         polygon: data.polygon ?? s.polygon,
         panelCount: newCount,
