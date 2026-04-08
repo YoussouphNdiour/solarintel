@@ -85,6 +85,34 @@ class ReportRequest(BaseModel):
     panel_brand: str = "JA Solar"
     panel_model: str = ""
     temp_coeff_pmax: float = -0.35
+    # Module electrical parameters (STC: 1000 W/m², 25°C)
+    module_vmp_v: float = 0.0          # * Tension au point de puissance max (V)
+    module_imp_a: float = 0.0          # * Courant au point de puissance max (A)
+    module_voc_v: float = 0.0          # * Tension circuit ouvert (V)
+    module_isc_a: float = 0.0          # * Courant court-circuit (A)
+    module_temp_coeff_voc_pct: float = -0.25  # Coeff. temp. Voc (%/°C)
+    module_temp_coeff_isc_pct: float = 0.045  # Coeff. temp. Isc (%/°C)
+    module_noct_c: float = 45.0        # Température NOCT (°C)
+    module_max_sys_voltage_v: int = 1500  # Tension max système (V DC)
+    module_max_fuse_a: float = 35.0    # Fusible série max (A)
+    # Inverter DC input parameters
+    inverter_mppt_vmin_v: float = 0.0  # * Tension MPPT min (V DC)
+    inverter_mppt_vmax_v: float = 0.0  # * Tension MPPT max (V DC)
+    inverter_voc_max_v: float = 0.0    # * Tension Voc max admissible (V DC)
+    inverter_idc_max_a: float = 0.0    # Courant DC max entrée (A)
+    inverter_efficiency_pct: float = 0.0  # Rendement max (%)
+    inverter_mppt_count: int = 0       # Nombre d'entrées MPPT
+    # Battery parameters
+    battery_vnom_v: float = 0.0        # Tension nominale (V DC)
+    battery_capacity_kwh: float = 0.0  # Capacité (kWh)
+    battery_dod_max_pct: float = 80.0  # DoD max (%)
+    battery_efficiency_pct: float = 92.0  # Rendement aller-retour (%)
+    battery_cycle_life: int = 0        # Durée de vie (cycles)
+    # String sizing (configuration DC)
+    modules_in_series: int = 0         # * Modules en série par chaîne
+    strings_parallel: int = 0          # * Nombre de chaînes parallèles
+    t_min_site_c: float = 15.0         # Temp. min site (°C) pour calcul Voc
+    t_max_site_c: float = 70.0         # Temp. max module (°C) pour calcul Vmpp
     # Économie
     electricity_price_kwh: float = 118
     annual_increase_pct: float = 3.5
@@ -208,6 +236,18 @@ def _build_pdf(req: ReportRequest) -> bytes:
         return _plain_text_fallback(req)
 
     peak_kwc = req.panel_count * req.panel_power_wc / 1000.0
+
+    # ── Calcul tensions string corrigées en température ──────────────────────
+    # Voc_string(Tmin) = N_series × Voc × [1 + β_voc/100 × (Tmin − 25)]
+    # Vmpp_string(Tmax) = N_series × Vmp × [1 + γ_pmax/100 × (Tmax − 25)]
+    n_series = req.modules_in_series
+    voc_str_cold = 0.0
+    vmpp_str_hot = 0.0
+    if n_series > 0 and req.module_voc_v > 0:
+        beta_voc = req.module_temp_coeff_voc_pct / 100  # fraction/°C
+        gamma_p  = req.temp_coeff_pmax / 100            # fraction/°C
+        voc_str_cold  = n_series * req.module_voc_v  * (1 + beta_voc  * (req.t_min_site_c - 25))
+        vmpp_str_hot  = n_series * req.module_vmp_v  * (1 + gamma_p   * (req.t_max_site_c - 25))
 
     # ── CAPEX — utiliser les prix réels envoyés par le frontend ─────────────
     capex_panels   = req.capex_panels_xof if req.capex_panels_xof > 0 else (
@@ -344,6 +384,40 @@ def _build_pdf(req: ReportRequest) -> bytes:
                 else "Onduleur non renseigné"
             ),
         ),
+        QAValidation(
+            code="E1", label="Voc chaine < Voc_max onduleur *",
+            status=(
+                "PASS" if voc_str_cold <= req.inverter_voc_max_v * 0.98
+                else "FAIL" if voc_str_cold > req.inverter_voc_max_v
+                else "WARNING"
+            ) if (voc_str_cold > 0 and req.inverter_voc_max_v > 0) else "INFO",
+            detail=(
+                f"Voc chaine (-10°C) = {voc_str_cold:.0f} V vs limite {req.inverter_voc_max_v:.0f} V"
+                if voc_str_cold > 0 else "Parametres module non renseignes"
+            ),
+        ),
+        QAValidation(
+            code="E2", label="Vmpp chaine (chaud) dans plage MPPT *",
+            status=(
+                "PASS" if req.inverter_mppt_vmin_v <= vmpp_str_hot <= req.inverter_mppt_vmax_v
+                else "FAIL"
+            ) if (vmpp_str_hot > 0 and req.inverter_mppt_vmax_v > 0) else "INFO",
+            detail=(
+                f"Vmpp chaine (70°C) = {vmpp_str_hot:.0f} V, plage MPPT = {req.inverter_mppt_vmin_v:.0f}–{req.inverter_mppt_vmax_v:.0f} V"
+                if vmpp_str_hot > 0 else "Parametres string non renseignes"
+            ),
+        ),
+        QAValidation(
+            code="E3", label="Voc chaine < tension max module *",
+            status=(
+                "PASS" if voc_str_cold <= req.module_max_sys_voltage_v
+                else "FAIL"
+            ) if (voc_str_cold > 0 and req.module_max_sys_voltage_v > 0) else "INFO",
+            detail=(
+                f"Voc chaine = {voc_str_cold:.0f} V vs max module {req.module_max_sys_voltage_v} V DC"
+                if voc_str_cold > 0 else "Parametres module non renseignes"
+            ),
+        ),
     ]
 
     # ── Assemble SolarReport ─────────────────────────────────────────────────
@@ -400,28 +474,59 @@ def _build_pdf(req: ReportRequest) -> bytes:
     # En mode "consommation", pas de section bilan énergétique — on passe [] même si des appareils ont été saisis
     report.appliances  = ([a.model_dump() for a in req.appliances] if req.appliances else []) if is_bilan else []
     report.equipment   = {
+        "module_elec": {
+            "Vmp (STC)":          f"{req.module_vmp_v:.2f} V *" if req.module_vmp_v else "—",
+            "Imp (STC)":          f"{req.module_imp_a:.2f} A *" if req.module_imp_a else "—",
+            "Voc (STC)":          f"{req.module_voc_v:.2f} V *" if req.module_voc_v else "—",
+            "Isc (STC)":          f"{req.module_isc_a:.2f} A *" if req.module_isc_a else "—",
+            "Coeff. Voc (beta)":  f"{req.module_temp_coeff_voc_pct:+.3f} %/deg.C",
+            "Coeff. Isc (alpha)": f"{req.module_temp_coeff_isc_pct:+.3f} %/deg.C",
+            "Coeff. Pmax (gamma)":f"{req.temp_coeff_pmax:+.3f} %/deg.C",
+            "NOCT":               f"{req.module_noct_c:.0f} deg.C",
+            "Tension max systeme":f"{req.module_max_sys_voltage_v} V DC",
+            "Fusible serie max":  f"{req.module_max_fuse_a:.0f} A",
+        } if req.module_vmp_v > 0 else {},
         "inverter": {
-            "Marque":          req.inverter_brand,
-            "Modèle":          req.inverter_model or "—",
-            "Quantité":        f"{req.inverter_qty}",
-            "Puissance (kVA)": f"{req.inverter_power_kva:.1f} kVA" if req.inverter_power_kva > 0 else "—",
-            "Charge apparente":f"{req.peak_apparent_power_kva:.1f} kVA (site)",
-            "FP moyen site":   f"{req.site_pf_avg:.2f}",
-            "Prix unit.":      f"{_fmt(req.inverter_price_xof)} XOF",
-            "Total":           f"{_fmt(capex_inverter)} XOF",
+            "Marque":             req.inverter_brand,
+            "Modele":             req.inverter_model or "—",
+            "Quantite":           f"{req.inverter_qty}",
+            "Puissance (kVA)":    f"{req.inverter_power_kva:.1f} kVA" if req.inverter_power_kva > 0 else "—",
+            "Plage MPPT *":       f"{req.inverter_mppt_vmin_v:.0f} – {req.inverter_mppt_vmax_v:.0f} V DC" if req.inverter_mppt_vmax_v > 0 else "—",
+            "Voc max admissible *":f"{req.inverter_voc_max_v:.0f} V DC" if req.inverter_voc_max_v > 0 else "—",
+            "Idc max entree":     f"{req.inverter_idc_max_a:.0f} A DC" if req.inverter_idc_max_a > 0 else "—",
+            "Entrees MPPT":       f"{req.inverter_mppt_count}" if req.inverter_mppt_count > 0 else "—",
+            "Rendement max":      f"{req.inverter_efficiency_pct:.1f} %" if req.inverter_efficiency_pct > 0 else "—",
+            "Charge apparente":   f"{req.peak_apparent_power_kva:.1f} kVA (site)",
+            "FP moyen site":      f"{req.site_pf_avg:.2f}",
+            "Prix unit.":         f"{_fmt(req.inverter_price_xof)} XOF",
+            "Total":              f"{_fmt(capex_inverter)} XOF",
         } if req.inverter_model else {},
         "battery": {
-            "Modèle":    req.battery_model,
-            "Quantité":  f"{req.battery_qty}",
-            "Prix unit.":f"{_fmt(req.battery_price_xof)} XOF",
-            "Total":     f"{_fmt(capex_battery)} XOF",
+            "Modele":             req.battery_model,
+            "Quantite":           f"{req.battery_qty}",
+            "Tension nominale *": f"{req.battery_vnom_v:.0f} V DC" if req.battery_vnom_v > 0 else "—",
+            "Capacite":           f"{req.battery_capacity_kwh:.1f} kWh" if req.battery_capacity_kwh > 0 else "—",
+            "DoD max":            f"{req.battery_dod_max_pct:.0f} %",
+            "Rendement aller-retour": f"{req.battery_efficiency_pct:.1f} %",
+            "Duree de vie":       f"{req.battery_cycle_life} cycles" if req.battery_cycle_life > 0 else "—",
+            "Prix unit.":         f"{_fmt(req.battery_price_xof)} XOF",
+            "Total":              f"{_fmt(capex_battery)} XOF",
         } if req.battery_model else {},
+        "strings": {
+            "Modules en serie *":    f"{n_series}" if n_series > 0 else "—",
+            "Chaines paralleles *":  f"{req.strings_parallel}" if req.strings_parallel > 0 else "—",
+            "Vmpp chaine (Tmax) *":  f"{vmpp_str_hot:.1f} V" if vmpp_str_hot > 0 else "—",
+            "Voc chaine (Tmin) *":   f"{voc_str_cold:.1f} V" if voc_str_cold > 0 else "—",
+            "Limite Voc onduleur":   f"{req.inverter_voc_max_v:.0f} V DC" if req.inverter_voc_max_v > 0 else "—",
+            "Limite MPPT min":       f"{req.inverter_mppt_vmin_v:.0f} V DC" if req.inverter_mppt_vmin_v > 0 else "—",
+            "Limite MPPT max":       f"{req.inverter_mppt_vmax_v:.0f} V DC" if req.inverter_mppt_vmax_v > 0 else "—",
+        } if n_series > 0 else {},
         "capex": {
-            "Panneaux solaires":        capex_panels,
-            "Onduleur(s)":              capex_inverter,
-            "Batterie(s)":              capex_battery,
+            "Panneaux solaires":                    capex_panels,
+            "Onduleur(s)":                          capex_inverter,
+            "Batterie(s)":                          capex_battery,
             f"Instal./Livr./Maint. ({req.install_pct:.0f}%)": capex_install,
-            "CAPEX Total":              total_capex,
+            "CAPEX Total":                          total_capex,
         },
     }
 

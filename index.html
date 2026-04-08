@@ -856,6 +856,35 @@
                     <div id="batterySpecs" class="flex flex-wrap gap-2"></div>
                 </div>
 
+                <!-- Configuration DC des chaînes -->
+                <div class="rounded-lg border border-slate-700/50 p-3 space-y-2">
+                    <h4 class="text-xs font-semibold text-solar-blue uppercase tracking-wide flex items-center gap-1">
+                        <i data-lucide="git-branch" class="w-3 h-3"></i> Configuration DC des chaînes *
+                    </h4>
+                    <div class="grid grid-cols-2 gap-2 text-xs">
+                        <div>
+                            <label class="block text-slate-400 mb-0.5">Modules en série *</label>
+                            <input id="modulesInSeries" type="number" class="si-input" value="0" min="0"
+                                   placeholder="ex: 18" title="Nombre de modules en série par chaîne">
+                        </div>
+                        <div>
+                            <label class="block text-slate-400 mb-0.5">Chaînes parallèles *</label>
+                            <input id="stringsParallel" type="number" class="si-input" value="0" min="0"
+                                   placeholder="ex: 4" title="Nombre de chaînes en parallèle">
+                        </div>
+                        <div>
+                            <label class="block text-slate-400 mb-0.5">T° min site (°C)</label>
+                            <input id="tMinSite" type="number" class="si-input" value="15" step="1"
+                                   title="Température minimale du site (calcul Voc max)">
+                        </div>
+                        <div>
+                            <label class="block text-slate-400 mb-0.5">T° max module (°C)</label>
+                            <input id="tMaxSite" type="number" class="si-input" value="70" step="1"
+                                   title="Température max cellule PV (calcul Vmpp min)">
+                        </div>
+                    </div>
+                </div>
+
                 <!-- CAPEX Breakdown -->
                 <div class="rounded-lg border border-slate-700/50 overflow-hidden text-xs">
                     <table class="w-full">
@@ -1418,38 +1447,52 @@ const PANEL_CATALOG = {
 // =========================================================================
 const INVERTER_CATALOG = {
     "GOODWE": [
-        { model: "GW3600-EH",  power_kw: 3.6,  power_kva: 3.6,  phase: "Monophasé", type: "Hybride",  defaultPrice: 350000  },
-        { model: "GW5000-EH",  power_kw: 5.0,  power_kva: 5.0,  phase: "Monophasé", type: "Hybride",  defaultPrice: 450000  },
-        { model: "GW8000-DT",  power_kw: 8.0,  power_kva: 8.0,  phase: "Triphasé",  type: "Hybride",  defaultPrice: 620000  },
-        { model: "GW10000-DT", power_kw: 10.0, power_kva: 10.0, phase: "Triphasé",  type: "Hybride",  defaultPrice: 1450000 },
-        { model: "GW15000-DT", power_kw: 15.0, power_kva: 15.0, phase: "Triphasé",  type: "Hybride",  defaultPrice: 1950000 },
-        { model: "GW20KT",     power_kw: 20.0, power_kva: 20.0, phase: "Triphasé",  type: "Réseau",   defaultPrice: 1150000 },
+        { model: "GW3600-EH",  power_kw: 3.6,  power_kva: 3.6,  phase: "Monophasé", type: "Hybride",  defaultPrice: 350000,  mppt_vmin: 80,  mppt_vmax: 520,  voc_max: 600,  idc_max: 26, efficiency_pct: 97.6, mppt_count: 2 },
+        { model: "GW5000-EH",  power_kw: 5.0,  power_kva: 5.0,  phase: "Monophasé", type: "Hybride",  defaultPrice: 450000,  mppt_vmin: 80,  mppt_vmax: 520,  voc_max: 600,  idc_max: 26, efficiency_pct: 97.6, mppt_count: 2 },
+        { model: "GW8000-DT",  power_kw: 8.0,  power_kva: 8.0,  phase: "Triphasé",  type: "Hybride",  defaultPrice: 620000,  mppt_vmin: 200, mppt_vmax: 800,  voc_max: 1000, idc_max: 30, efficiency_pct: 98.4, mppt_count: 2 },
+        { model: "GW10000-DT", power_kw: 10.0, power_kva: 10.0, phase: "Triphasé",  type: "Hybride",  defaultPrice: 1450000, mppt_vmin: 200, mppt_vmax: 800,  voc_max: 1000, idc_max: 30, efficiency_pct: 98.4, mppt_count: 2 },
+        { model: "GW15000-DT", power_kw: 15.0, power_kva: 15.0, phase: "Triphasé",  type: "Hybride",  defaultPrice: 1950000, mppt_vmin: 200, mppt_vmax: 800,  voc_max: 1000, idc_max: 35, efficiency_pct: 98.4, mppt_count: 2 },
+        { model: "GW20KT",     power_kw: 20.0, power_kva: 20.0, phase: "Triphasé",  type: "Réseau",   defaultPrice: 1150000, mppt_vmin: 200, mppt_vmax: 850,  voc_max: 1000, idc_max: 40, efficiency_pct: 98.6, mppt_count: 3 },
     ],
     "GROWATT": [
-        { model: "MIN 3600TL-XH",  power_kw: 3.6,  power_kva: 3.6,  phase: "Monophasé", type: "Hybride",         defaultPrice: 320000 },
-        { model: "SPF 5000 ES",    power_kw: 5.0,  power_kva: 5.0,  phase: "Monophasé", type: "Off-Grid/Hybride", defaultPrice: 420000 },
-        { model: "MIN 6000TL-XH",  power_kw: 6.0,  power_kva: 6.0,  phase: "Monophasé", type: "Hybride",         defaultPrice: 490000 },
-        { model: "SPF 10000T DVM", power_kw: 10.0, power_kva: 10.0, phase: "Triphasé",  type: "Off-Grid/Hybride", defaultPrice: 720000 },
-        { model: "MID 15KTL3-X",   power_kw: 15.0, power_kva: 15.0, phase: "Triphasé",  type: "Réseau",          defaultPrice: 900000 },
-        { model: "MID 20KTL3-X",   power_kw: 20.0, power_kva: 20.0, phase: "Triphasé",  type: "Réseau",          defaultPrice: 1100000 },
+        { model: "MIN 3600TL-XH",  power_kw: 3.6,  power_kva: 3.6,  phase: "Monophasé", type: "Hybride",         defaultPrice: 320000,  mppt_vmin: 80,  mppt_vmax: 550,  voc_max: 600,  idc_max: 26, efficiency_pct: 97.5, mppt_count: 2 },
+        { model: "SPF 5000 ES",    power_kw: 5.0,  power_kva: 5.0,  phase: "Monophasé", type: "Off-Grid/Hybride", defaultPrice: 420000,  mppt_vmin: 60,  mppt_vmax: 450,  voc_max: 500,  idc_max: 20, efficiency_pct: 93.0, mppt_count: 1 },
+        { model: "MIN 6000TL-XH",  power_kw: 6.0,  power_kva: 6.0,  phase: "Monophasé", type: "Hybride",         defaultPrice: 490000,  mppt_vmin: 80,  mppt_vmax: 550,  voc_max: 600,  idc_max: 26, efficiency_pct: 97.5, mppt_count: 2 },
+        { model: "SPF 10000T DVM", power_kw: 10.0, power_kva: 10.0, phase: "Triphasé",  type: "Off-Grid/Hybride", defaultPrice: 720000,  mppt_vmin: 90,  mppt_vmax: 450,  voc_max: 500,  idc_max: 30, efficiency_pct: 94.0, mppt_count: 2 },
+        { model: "MID 15KTL3-X",   power_kw: 15.0, power_kva: 15.0, phase: "Triphasé",  type: "Réseau",          defaultPrice: 900000,  mppt_vmin: 200, mppt_vmax: 1000, voc_max: 1100, idc_max: 40, efficiency_pct: 98.4, mppt_count: 3 },
+        { model: "MID 20KTL3-X",   power_kw: 20.0, power_kva: 20.0, phase: "Triphasé",  type: "Réseau",          defaultPrice: 1100000, mppt_vmin: 200, mppt_vmax: 1000, voc_max: 1100, idc_max: 40, efficiency_pct: 98.4, mppt_count: 3 },
     ],
     "DEYE": [
-        { model: "SUN-5K-SG01LP1",  power_kw: 5.0,  power_kva: 5.0,  phase: "Monophasé", type: "Hybride", defaultPrice: 1875000 },
-        { model: "SUN-12K-SG01LP1", power_kw: 12.0, power_kva: 12.0, phase: "Monophasé", type: "Hybride", defaultPrice: 1950000 },
-        { model: "SUN-12K-SG04LP3", power_kw: 12.0, power_kva: 12.0, phase: "Triphasé",  type: "Hybride", defaultPrice: 3600000 },
-        { model: "SUN-30K-SG01LP3", power_kw: 30.0, power_kva: 30.0, phase: "Triphasé",  type: "Hybride", defaultPrice: 2350000 },
-        { model: "SUN-50K-SG01LP3", power_kw: 50.0, power_kva: 50.0, phase: "Triphasé",  type: "Hybride", defaultPrice: 2350000 },
+        { model: "SUN-5K-SG01LP1",  power_kw: 5.0,  power_kva: 5.0,  phase: "Monophasé", type: "Hybride", defaultPrice: 1875000, mppt_vmin: 120, mppt_vmax: 500,  voc_max: 500,  idc_max: 26, efficiency_pct: 97.5, mppt_count: 2 },
+        { model: "SUN-12K-SG01LP1", power_kw: 12.0, power_kva: 12.0, phase: "Monophasé", type: "Hybride", defaultPrice: 1950000, mppt_vmin: 100, mppt_vmax: 560,  voc_max: 600,  idc_max: 30, efficiency_pct: 97.6, mppt_count: 2 },
+        { model: "SUN-12K-SG04LP3", power_kw: 12.0, power_kva: 12.0, phase: "Triphasé",  type: "Hybride", defaultPrice: 3600000, mppt_vmin: 100, mppt_vmax: 560,  voc_max: 600,  idc_max: 30, efficiency_pct: 97.8, mppt_count: 3 },
+        { model: "SUN-30K-SG01LP3", power_kw: 30.0, power_kva: 30.0, phase: "Triphasé",  type: "Hybride", defaultPrice: 2350000, mppt_vmin: 200, mppt_vmax: 800,  voc_max: 1000, idc_max: 40, efficiency_pct: 98.4, mppt_count: 3 },
+        { model: "SUN-50K-SG01LP3", power_kw: 50.0, power_kva: 50.0, phase: "Triphasé",  type: "Hybride", defaultPrice: 2350000, mppt_vmin: 200, mppt_vmax: 850,  voc_max: 1000, idc_max: 50, efficiency_pct: 98.6, mppt_count: 4 },
     ],
 };
 // =========================================================================
 // BATTERY CATALOG (UHOME)
 // =========================================================================
 const BATTERY_CATALOG = [
-    { model: "UHOME 5.0kWh",       capacity_kwh: 5.12,  voltage: 48, chemistry: "LiFePO4", cycles: 6000, defaultPrice: 850000  },
-    { model: "UHOME 10.0kWh",      capacity_kwh: 10.24, voltage: 48, chemistry: "LiFePO4", cycles: 6000, defaultPrice: 1500000 },
-    { model: "UHOME 15.0kWh",      capacity_kwh: 15.36, voltage: 48, chemistry: "LiFePO4", cycles: 6000, defaultPrice: 1850000 },
-    { model: "UHOME 20.0kWh",      capacity_kwh: 20.48, voltage: 48, chemistry: "LiFePO4", cycles: 6000, defaultPrice: 2300000 },
+    { model: "UHOME 5.0kWh",  capacity_kwh: 5.12,  voltage: 48, chemistry: "LiFePO4", cycles: 6000, dod_max: 80, efficiency_pct: 92, defaultPrice: 850000  },
+    { model: "UHOME 10.0kWh", capacity_kwh: 10.24, voltage: 48, chemistry: "LiFePO4", cycles: 6000, dod_max: 80, efficiency_pct: 92, defaultPrice: 1500000 },
+    { model: "UHOME 15.0kWh", capacity_kwh: 15.36, voltage: 48, chemistry: "LiFePO4", cycles: 6000, dod_max: 80, efficiency_pct: 92, defaultPrice: 1850000 },
+    { model: "UHOME 20.0kWh", capacity_kwh: 20.48, voltage: 48, chemistry: "LiFePO4", cycles: 6000, dod_max: 80, efficiency_pct: 92, defaultPrice: 2300000 },
 ];
+
+// Catalogue modules PV (paramètres électriques STC)
+const MODULE_CATALOG = {
+    "JA Solar": [
+        { model: "JAM72S30-545/MR",   power_wc: 545, vmp: 41.13, imp: 13.25, voc: 49.42, isc: 14.02, beta_voc: -0.270, alpha_isc: 0.045, gamma_pmax: -0.350, noct: 45, max_sys_v: 1500, fuse_a: 20 },
+        { model: "JAM72D42-595/LB",   power_wc: 595, vmp: 41.82, imp: 14.23, voc: 50.26, isc: 15.04, beta_voc: -0.250, alpha_isc: 0.045, gamma_pmax: -0.290, noct: 45, max_sys_v: 1500, fuse_a: 35 },
+        { model: "JAM66D45-605/LB",   power_wc: 605, vmp: 39.60, imp: 15.28, voc: 47.90, isc: 16.00, beta_voc: -0.250, alpha_isc: 0.045, gamma_pmax: -0.290, noct: 45, max_sys_v: 1500, fuse_a: 35 },
+        { model: "JAM66D45-610/LB",   power_wc: 610, vmp: 39.77, imp: 15.34, voc: 48.10, isc: 16.05, beta_voc: -0.250, alpha_isc: 0.045, gamma_pmax: -0.290, noct: 45, max_sys_v: 1500, fuse_a: 35 },
+        { model: "JAM66D45-615/LB",   power_wc: 615, vmp: 39.96, imp: 15.39, voc: 48.30, isc: 16.10, beta_voc: -0.250, alpha_isc: 0.045, gamma_pmax: -0.290, noct: 45, max_sys_v: 1500, fuse_a: 35 },
+        { model: "JAM66D45-620/LB",   power_wc: 620, vmp: 40.21, imp: 15.42, voc: 48.50, isc: 16.13, beta_voc: -0.250, alpha_isc: 0.045, gamma_pmax: -0.290, noct: 45, max_sys_v: 1500, fuse_a: 35 },
+        { model: "JAM66D45-625/LB",   power_wc: 625, vmp: 40.45, imp: 15.45, voc: 48.70, isc: 16.15, beta_voc: -0.250, alpha_isc: 0.045, gamma_pmax: -0.290, noct: 45, max_sys_v: 1500, fuse_a: 35 },
+        { model: "JAM66D45-630/LB",   power_wc: 630, vmp: 40.70, imp: 15.48, voc: 48.90, isc: 16.18, beta_voc: -0.250, alpha_isc: 0.045, gamma_pmax: -0.290, noct: 45, max_sys_v: 1500, fuse_a: 35 },
+    ],
+};
 
 // =========================================================================
 // APPLIANCE TABLE DATA
@@ -1763,10 +1806,14 @@ function applyInverterSpecs(inv) {
     if (!inv) return;
     document.getElementById('inverterPrice').value = inv.defaultPrice;
     const el = document.getElementById('inverterSpecs');
+    const mpptStr = (inv.mppt_vmin && inv.mppt_vmax) ? ` · MPPT ${inv.mppt_vmin}–${inv.mppt_vmax} V` : '';
+    const vocStr  = inv.voc_max ? ` · Voc max ${inv.voc_max} V DC` : '';
     el.innerHTML = `
         <span class="spec-badge"><i data-lucide="zap" class="w-3 h-3"></i>${inv.power_kw} kW / ${inv.power_kva} kVA</span>
         <span class="spec-badge">${inv.phase}</span>
         <span class="spec-badge">${inv.type}</span>
+        ${mpptStr ? `<span class="spec-badge">${mpptStr.slice(3)}</span>` : ''}
+        ${vocStr  ? `<span class="spec-badge">${vocStr.slice(3)}</span>`  : ''}
     `;
     _safeCreateIcons();
 }
@@ -2056,6 +2103,57 @@ async function generateReport() {
             const qty = +(document.getElementById('inverterQty')?.value || 1);
             return inv ? inv.power_kva * qty : 0;
         })(),
+        // Paramètres électriques onduleur (depuis catalogue)
+        ...(function(){
+            const brand = document.getElementById('inverterBrand')?.value || '';
+            const model = document.getElementById('inverterModel')?.value || '';
+            const inv = (INVERTER_CATALOG[brand]||[]).find(function(i){return i.model===model;});
+            if (!inv) return {};
+            return {
+                inverter_mppt_vmin_v:    inv.mppt_vmin || 0,
+                inverter_mppt_vmax_v:    inv.mppt_vmax || 0,
+                inverter_voc_max_v:      inv.voc_max   || 0,
+                inverter_idc_max_a:      inv.idc_max   || 0,
+                inverter_efficiency_pct: inv.efficiency_pct || 0,
+                inverter_mppt_count:     inv.mppt_count || 0,
+            };
+        })(),
+        // Paramètres électriques module PV (depuis catalogue)
+        ...(function(){
+            const brand = STATE.panelBrand || '';
+            const model = STATE.panelModel || '';
+            const mod = (MODULE_CATALOG[brand]||[]).find(function(m){return m.model===model;});
+            if (!mod) return {};
+            return {
+                module_vmp_v:              mod.vmp,
+                module_imp_a:              mod.imp,
+                module_voc_v:              mod.voc,
+                module_isc_a:              mod.isc,
+                module_temp_coeff_voc_pct: mod.beta_voc,
+                module_temp_coeff_isc_pct: mod.alpha_isc,
+                module_noct_c:             mod.noct,
+                module_max_sys_voltage_v:  mod.max_sys_v,
+                module_max_fuse_a:         mod.fuse_a,
+            };
+        })(),
+        // Paramètres électriques batterie (depuis catalogue)
+        ...(function(){
+            const model = document.getElementById('batteryModel')?.value || '';
+            const bat = BATTERY_CATALOG.find(function(b){return b.model===model;});
+            if (!bat) return {};
+            return {
+                battery_vnom_v:         bat.voltage,
+                battery_capacity_kwh:   bat.capacity_kwh,
+                battery_dod_max_pct:    bat.dod_max,
+                battery_efficiency_pct: bat.efficiency_pct,
+                battery_cycle_life:     bat.cycles,
+            };
+        })(),
+        // Configuration string DC
+        modules_in_series: +(document.getElementById('modulesInSeries')?.value || 0),
+        strings_parallel:  +(document.getElementById('stringsParallel')?.value  || 0),
+        t_min_site_c:      +(document.getElementById('tMinSite')?.value  || 15),
+        t_max_site_c:      +(document.getElementById('tMaxSite')?.value  || 70),
         // Mode de travail
         app_mode:        window._appMode || 'consommation',
         // Métadonnées rapport

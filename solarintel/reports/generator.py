@@ -640,6 +640,42 @@ class ReportGenerator:
             ["Inclinaison", f"{sys.tilt:.0f}°"],
         ]))
 
+        # 2.3 Paramètres électriques module (STC)
+        r = self.report
+        mod_elec = getattr(r, "equipment", {}).get("module_elec", {})
+        if mod_elec and any(v != "—" for v in mod_elec.values()):
+            story.append(_subsection_header("2.3  Parametres electriques module (STC 1000 W/m², 25°C)"))
+            rows = [["Parametre", "Valeur"]] + [[k, v] for k, v in mod_elec.items()]
+            story.append(_data_table(rows))
+
+        # 2.4 Configuration DC des chaînes
+        str_cfg = getattr(r, "equipment", {}).get("strings", {})
+        if str_cfg and str_cfg.get("Modules en serie *", "—") != "—":
+            story.append(_subsection_header("2.4  Configuration des chaines DC *"))
+            rows = [["Parametre", "Valeur"]] + [[k, v] for k, v in str_cfg.items()]
+            story.append(_data_table(rows))
+
+            # Alerte si Voc chaine dépasse la limite onduleur
+            voc_str = str_cfg.get("Voc chaine (Tmin) *", "—")
+            voc_lim = str_cfg.get("Limite Voc onduleur", "—")
+            if voc_str != "—" and voc_lim != "—":
+                try:
+                    voc_v = float(voc_str.split()[0])
+                    lim_v = float(voc_lim.split()[0])
+                    if voc_v > lim_v * 0.98:
+                        warn_style = ParagraphStyle(
+                            "v_warn", fontName="Helvetica-Bold", fontSize=9,
+                            textColor=C_RED, spaceAfter=2 * mm,
+                        )
+                        status = "DANGER" if voc_v > lim_v else "ATTENTION"
+                        story.append(Paragraph(
+                            f"{status} : Voc chaine = {voc_v:.0f} V approche ou depasse la limite "
+                            f"Voc onduleur = {lim_v:.0f} V. Reduire le nombre de modules en serie.",
+                            warn_style,
+                        ))
+                except (ValueError, IndexError):
+                    pass
+
     # ── Section 3 : Simulation pvlib ──────────────────────────────────────────
 
     def _add_simulation(self, story: list) -> None:
@@ -1197,15 +1233,22 @@ class ReportGenerator:
                 inv_rows.append([k, str(v)])
             story.append(_data_table(inv_rows))
 
+        # Module electrical params (if provided)
+        mod_elec = equip.get("module_elec", {})
+        if mod_elec:
+            story.append(_subsection_header(f"{sec}.2  Parametres electriques module *"))
+            rows = [["Parametre", "Valeur"]] + [[k, v] for k, v in mod_elec.items()]
+            story.append(_data_table(rows))
+
         if bat:
-            story.append(_subsection_header(f"{sec}.2  Stockage batterie"))
+            story.append(_subsection_header(f"{sec}.3  Stockage batterie"))
             bat_rows = [["Paramètre", "Valeur"]]
             for k, v in bat.items():
                 bat_rows.append([k, str(v)])
             story.append(_data_table(bat_rows))
 
         if capex:
-            story.append(_subsection_header(f"{sec}.3  Détail CAPEX"))
+            story.append(_subsection_header(f"{sec}.4  Détail CAPEX"))
             capex_rows = [["Poste", "Montant (XOF)"]]
             for k, v in capex.items():
                 capex_rows.append([k, _fmt(float(v))])
