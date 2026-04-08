@@ -865,24 +865,29 @@
                         <div>
                             <label class="block text-slate-400 mb-0.5">Modules en série *</label>
                             <input id="modulesInSeries" type="number" class="si-input" value="0" min="0"
-                                   placeholder="ex: 18" title="Nombre de modules en série par chaîne">
+                                   placeholder="ex: 18" title="Nombre de modules en série par chaîne"
+                                   oninput="this.dataset.autoFilled='false'">
                         </div>
                         <div>
                             <label class="block text-slate-400 mb-0.5">Chaînes parallèles *</label>
                             <input id="stringsParallel" type="number" class="si-input" value="0" min="0"
-                                   placeholder="ex: 4" title="Nombre de chaînes en parallèle">
+                                   placeholder="ex: 4" title="Nombre de chaînes en parallèle"
+                                   oninput="this.dataset.autoFilled='false'">
                         </div>
                         <div>
                             <label class="block text-slate-400 mb-0.5">T° min site (°C)</label>
                             <input id="tMinSite" type="number" class="si-input" value="15" step="1"
-                                   title="Température minimale du site (calcul Voc max)">
+                                   title="Température minimale du site (calcul Voc max)"
+                                   oninput="suggestStringConfig()">
                         </div>
                         <div>
                             <label class="block text-slate-400 mb-0.5">T° max module (°C)</label>
                             <input id="tMaxSite" type="number" class="si-input" value="70" step="1"
-                                   title="Température max cellule PV (calcul Vmpp min)">
+                                   title="Température max cellule PV (calcul Vmpp min)"
+                                   oninput="suggestStringConfig()">
                         </div>
                     </div>
+                    <div id="stringSuggestion" class="hidden text-xs rounded p-2 bg-slate-800/60 border border-slate-600/40 space-y-0.5"></div>
                 </div>
 
                 <!-- CAPEX Breakdown -->
@@ -1577,6 +1582,7 @@ function onStateChange(prop, value) {
     if (prop === 'panelCount' || prop === 'peakPower_kWc') {
         updateKPIs();
         updatePanelBadge();
+        if (prop === 'panelCount') suggestStringConfig();
     }
     // Consommation ou prix électricité changés → recalcul complet
     if ((prop === 'annualConsumption' || prop === 'monthlyConsumption' ||
@@ -1768,6 +1774,7 @@ function applyPanelSpecs(panel) {
         <span class="spec-badge"><i data-lucide="gauge" class="w-3 h-3"></i>${panel.efficiency}%</span>
     `;
     _safeCreateIcons();
+    suggestStringConfig();
 }
 
 function _safeCreateIcons() {
@@ -1816,6 +1823,96 @@ function applyInverterSpecs(inv) {
         ${vocStr  ? `<span class="spec-badge">${vocStr.slice(3)}</span>`  : ''}
     `;
     _safeCreateIcons();
+    suggestStringConfig();
+}
+
+// =========================================================================
+// STRING SIZING AUTO-SUGGESTION
+// =========================================================================
+function suggestStringConfig() {
+    const brand  = document.getElementById('panelBrand')?.value || STATE.panelBrand;
+    const mModel = document.getElementById('panelModel')?.value || STATE.panelModel;
+    const iBrand = document.getElementById('inverterBrand')?.value || '';
+    const iModel = document.getElementById('inverterModel')?.value || '';
+
+    const mod = (MODULE_CATALOG[brand] || []).find(m => m.model === mModel);
+    const inv = (INVERTER_CATALOG[iBrand] || []).find(i => i.model === iModel);
+    const hint = document.getElementById('stringSuggestion');
+    if (!hint) return;
+
+    if (!mod || !inv || !inv.mppt_vmin || !inv.mppt_vmax || !inv.voc_max) {
+        hint.classList.add('hidden');
+        return;
+    }
+
+    const tMin = parseFloat(document.getElementById('tMinSite')?.value ?? 15);
+    const tMax = parseFloat(document.getElementById('tMaxSite')?.value ?? 70);
+    const panelCount = STATE.panelCount || 1;
+
+    // Temperature-corrected voltages
+    // beta_voc is stored as %/°C (negative), e.g. -0.270
+    const beta  = mod.beta_voc / 100;          // fraction/°C
+    const gamma = mod.gamma_pmax / 100;        // fraction/°C
+
+    const voc_at_tmin  = mod.voc * (1 + beta  * (tMin - 25));  // higher Voc at cold
+    const vmpp_at_tmax = mod.vmp * (1 + gamma * (tMax - 25));  // lower Vmpp at hot
+
+    // Min series: need Vmpp_string ≥ MPPT_min → n ≥ ceil(mppt_vmin / vmpp_at_tmax)
+    const n_min = Math.ceil(inv.mppt_vmin / vmpp_at_tmax);
+
+    // Max series from Voc limit at Tmin (safety): n ≤ floor(voc_max / voc_at_tmin)
+    const n_max_voc = Math.floor(inv.voc_max / voc_at_tmin);
+
+    // Max series from MPPT upper limit at Tmax: n ≤ floor(mppt_vmax / vmpp_at_tmax)
+    const n_max_mppt = Math.floor(inv.mppt_vmax / vmpp_at_tmax);
+
+    const n_max = Math.min(n_max_voc, n_max_mppt);
+
+    if (n_min > n_max) {
+        hint.classList.remove('hidden');
+        hint.innerHTML = `<span class="text-red-400 font-semibold">Incompatibilite : aucune config valide avec ce module/onduleur (n_min ${n_min} > n_max ${n_max}).</span>`;
+        return;
+    }
+
+    // Optimal: maximize n while keeping Vmpp_string(Tmax) ≥ MPPT_min with margin
+    // Use n_max (safe upper bound); ensures widest MPPT window
+    const n_optimal = n_max;
+
+    // Parallel strings needed to cover total system power
+    const n_parallel = Math.max(1, Math.ceil(panelCount / n_optimal));
+    const total_covered = n_optimal * n_parallel;
+
+    // Voltage check strings at extremes
+    const voc_str_cold  = (n_optimal * voc_at_tmin).toFixed(1);
+    const vmpp_str_hot  = (n_optimal * vmpp_at_tmax).toFixed(1);
+
+    // Fill inputs if they are at default 0
+    const msInput = document.getElementById('modulesInSeries');
+    const spInput = document.getElementById('stringsParallel');
+    if (msInput && (+msInput.value === 0 || msInput.dataset.autoFilled === 'true')) {
+        msInput.value = n_optimal;
+        msInput.dataset.autoFilled = 'true';
+    }
+    if (spInput && (+spInput.value === 0 || spInput.dataset.autoFilled === 'true')) {
+        spInput.value = n_parallel;
+        spInput.dataset.autoFilled = 'true';
+    }
+
+    const limitBy = n_max_voc <= n_max_mppt ? 'Voc(Tmin)' : 'MPPT(Tmax)';
+    hint.classList.remove('hidden');
+    hint.innerHTML = `
+        <div class="flex flex-wrap gap-x-3 gap-y-0.5 text-slate-300">
+            <span>Min serie: <strong class="text-solar-amber">${n_min}</strong></span>
+            <span>Max serie: <strong class="text-solar-amber">${n_max}</strong> <span class="text-slate-500">(limite ${limitBy})</span></span>
+            <span>Optimal: <strong class="text-green-400">${n_optimal}</strong></span>
+            <span>Chaines //: <strong class="text-green-400">${n_parallel}</strong></span>
+        </div>
+        <div class="flex flex-wrap gap-x-3 gap-y-0.5 text-slate-400 mt-0.5">
+            <span>Voc string @${tMin}°C: <strong>${voc_str_cold} V</strong> / ${inv.voc_max} V max</span>
+            <span>Vmpp string @${tMax}°C: <strong>${vmpp_str_hot} V</strong> (MPPT ${inv.mppt_vmin}–${inv.mppt_vmax} V)</span>
+        </div>
+        ${total_covered !== panelCount ? `<div class="text-slate-500 mt-0.5">NB : ${n_optimal}x${n_parallel} = ${total_covered} modules (${total_covered > panelCount ? '+' : ''}${total_covered - panelCount} vs ${panelCount} installes)</div>` : ''}
+    `;
 }
 
 function onBatteryModelChange() {
