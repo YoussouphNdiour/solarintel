@@ -3156,27 +3156,37 @@ window.addEventListener('message', function(e) {
         if (STATE.panelCount > 0) _doCallBackend();
     }
 
-    // Panel added in 3D view → update 2D panel count
+    // Panel added in 3D view → update 2D panel count + resimulate
     if (e.data.type === 'ADD_PANEL') {
         STATE.panelCount = (STATE.panelCount || 0) + 1;
         _state.panelCount = STATE.panelCount;
         updatePanelBadge();
+        callBackend();
     }
 
-    // Panel removed in 3D view → update 2D panel count
+    // Panel removed in 3D view → update 2D panel count + resimulate
     if (e.data.type === 'REMOVE_PANEL') {
         STATE.panelCount = Math.max(0, (STATE.panelCount || 0) - 1);
         _state.panelCount = STATE.panelCount;
         updatePanelBadge();
+        if (STATE.panelCount > 0) callBackend();
     }
 
     if (e.data.type === 'SHADOW_FACTOR') {
+        const prevShading = _state.obstaclesShadingPct || 0;
         _state.obstaclesShadingPct = e.data.shadingPct || 0;
         _state.obstacleCount = e.data.obstacleCount || 0;
         const el = document.getElementById('kpiShading');
         if (el) el.textContent = _state.obstaclesShadingPct.toFixed(1) + '%';
         const wrap = document.getElementById('kpiShadingRow');
-        if (wrap && _state.obstacleCount > 0) wrap.classList.remove('hidden');
+        if (wrap) {
+            if (_state.obstacleCount > 0) wrap.classList.remove('hidden');
+            else wrap.classList.add('hidden');
+        }
+        // Resimulate only if shading value actually changed
+        if (Math.abs(_state.obstaclesShadingPct - prevShading) > 0.05 && STATE.panelCount > 0) {
+            callBackend();
+        }
     }
 
     if (e.data.type === 'SCREENSHOT_3D' && e.data.dataUrl && e.data.mode) {
