@@ -1,4 +1,4 @@
-import { useRef, useEffect, Suspense } from 'react'
+import { useRef, useEffect, Suspense, useMemo } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { OrbitControls, Grid } from '@react-three/drei'
 import { useStore } from '../store/useStore'
@@ -22,7 +22,10 @@ function SceneContent() {
     return () => clearInterval(id)
   }, [isPlaying, tickSimulation])
 
-  const localPoly = polygon ? polygonToLocal(polygon) : defaultPolygon()
+  const localPoly = useMemo(
+    () => polygon ? polygonToLocal(polygon) : defaultPolygon(),
+    [polygon]
+  )
 
   const grid = (
     <Grid

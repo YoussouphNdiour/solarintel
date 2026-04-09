@@ -754,6 +754,30 @@
                         <p id="kpiLCOE" class="text-xl font-mono font-bold text-slate-200">— <span class="text-sm font-normal text-slate-400">XOF/kWh</span></p>
                     </div>
                 </div>
+                <!-- Indicateur qualite du dimensionnement -->
+                <div id="qualityBadge" class="hidden mt-3 rounded-lg px-3 py-2 flex items-center justify-between text-xs border">
+                    <span id="qualityLabel" class="font-semibold"></span>
+                    <span id="qualityDetail" class="text-slate-400"></span>
+                </div>
+
+                <!-- Boutons actions rapides -->
+                <div class="mt-3 flex gap-2">
+                    <button onclick="exportSimulationCSV()" id="btnExportCSV"
+                        class="hidden flex-1 text-xs flex items-center justify-center gap-1 border border-slate-600 text-slate-400 hover:text-solar-blue hover:border-solar-blue/50 rounded-md py-1.5 transition-colors">
+                        <i data-lucide="download" class="w-3 h-3"></i> Export CSV
+                    </button>
+                    <button onclick="showScenarioComparator()"
+                        class="hidden flex-1 text-xs flex items-center justify-center gap-1 border border-slate-600 text-slate-400 hover:text-solar-amber hover:border-solar-amber/50 rounded-md py-1.5 transition-colors"
+                        id="btnCompare">
+                        <i data-lucide="git-compare" class="w-3 h-3"></i> Comparer
+                    </button>
+                </div>
+
+                <!-- Historique simulations -->
+                <div id="simHistory" class="hidden mt-2 space-y-1">
+                    <p class="text-xs text-slate-500 mb-1">Simulations récentes</p>
+                </div>
+
                 <div id="roofGeomInfo" class="mt-3 hidden">
                     <div class="flex items-center justify-between text-xs bg-[#1e293b] rounded-lg px-3 py-2">
                         <span class="text-slate-400 flex items-center gap-1">
@@ -1698,13 +1722,14 @@ function updateKPIs() {
 }
 
 function resetKPIs() {
-    STATE.panelCount = 0;
-    STATE.peakPower_kWc = 0;
-    STATE.annualProduction_kWh = 0;
-    STATE.coverageRate = 0;
-    STATE.annualSavings = 0;
-    STATE.paybackYears = 0;
-    STATE.lcoe = 0;
+    // Bypass proxy pour eviter la cascade onStateChange (multiples appels updateKPIs/callBackend)
+    _state.panelCount = 0;
+    _state.peakPower_kWc = 0;
+    _state.annualProduction_kWh = 0;
+    _state.coverageRate = 0;
+    _state.annualSavings = 0;
+    _state.paybackYears = 0;
+    _state.lcoe = 0;
     ['kpiPanels','kpiPower','kpiProduction','kpiCoverage','kpiSavings','kpiPayback','kpiLCOE'].forEach(id => {
         const el = document.getElementById(id);
         if (el) {
@@ -1915,6 +1940,179 @@ function suggestStringConfig() {
     `;
 }
 
+// =========================================================================
+// INDICATEUR QUALITE DU DIMENSIONNEMENT
+// =========================================================================
+function updateQualityBadge() {
+    const badge  = document.getElementById('qualityBadge');
+    const label  = document.getElementById('qualityLabel');
+    const detail = document.getElementById('qualityDetail');
+    if (!badge || !label || !detail) return;
+
+    const production = _state.annualProduction_kWh || 0;
+    const consumption = STATE.annualConsumption || 0;
+    const payback = _state.paybackYears || 0;
+
+    if (production <= 0 || consumption <= 0) { badge.classList.add('hidden'); return; }
+
+    const ratio = (production / consumption) * 100;
+    let score = 0;
+
+    // Critere ratio production/consommation
+    if (ratio >= 90 && ratio <= 120) score += 2;
+    else if ((ratio >= 70 && ratio < 90) || (ratio > 120 && ratio <= 150)) score += 1;
+
+    // Critere payback
+    if (payback > 0 && payback < 8) score += 2;
+    else if (payback >= 8 && payback <= 12) score += 1;
+
+    let cls, text, det;
+    if (score >= 4)      { cls = 'border-green-500/40 bg-green-500/10'; text = '✓ Excellent'; det = `Ratio ${Math.round(ratio)}% · Retour ${payback}ans`; label.className = 'font-semibold text-green-400'; }
+    else if (score >= 2) { cls = 'border-amber-500/40 bg-amber-500/10'; text = '~ Bon';       det = `Ratio ${Math.round(ratio)}% · Retour ${payback}ans`; label.className = 'font-semibold text-amber-400'; }
+    else                 { cls = 'border-red-500/40 bg-red-500/10';     text = '! A optimiser'; det = `Ratio ${Math.round(ratio)}% · Retour ${payback}ans`; label.className = 'font-semibold text-red-400'; }
+
+    badge.className = `mt-3 rounded-lg px-3 py-2 flex items-center justify-between text-xs border ${cls}`;
+    label.textContent = text;
+    detail.textContent = det;
+    badge.classList.remove('hidden');
+}
+
+// =========================================================================
+// EXPORT CSV DE LA SIMULATION
+// =========================================================================
+function exportSimulationCSV() {
+    const months = ['Jan','Fev','Mar','Avr','Mai','Jun','Jul','Aou','Sep','Oct','Nov','Dec'];
+    const prod = _state.monthlyProduction || Array(12).fill(Math.round((_state.annualProduction_kWh||0)/12));
+    const price = STATE.electricity_price_kwh || 118;
+    const rows = [['Mois','Production_kWh','Economies_XOF']];
+    let totalProd = 0, totalSav = 0;
+    prod.forEach((p, i) => {
+        const sav = Math.round(p * price);
+        rows.push([months[i], p, sav]);
+        totalProd += p; totalSav += sav;
+    });
+    rows.push(['TOTAL', Math.round(totalProd), totalSav]);
+    const csv = rows.map(r => r.join(';')).join('\n');
+    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `solarintel-simulation-${new Date().toISOString().slice(0,10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+}
+
+// =========================================================================
+// COMPARATEUR DE SCENARIOS
+// =========================================================================
+function showScenarioComparator() {
+    const base = {
+        panels: STATE.panelCount || 0,
+        kwc: +((_state.peakPower_kWc||0)).toFixed(2),
+        prod: _state.annualProduction_kWh || 0,
+        capex: _state.capexTotal || 0,
+        payback: _state.paybackYears || 0,
+        roi: 0,
+        lcoe: _state.lcoe || 0,
+    };
+    const make = (factor) => ({
+        panels: Math.round(base.panels * factor),
+        kwc: +(base.kwc * factor).toFixed(2),
+        prod: Math.round(base.prod * factor),
+        capex: Math.round(base.capex * factor),
+        payback: base.payback > 0 ? +(base.payback / Math.sqrt(factor)).toFixed(1) : 0,
+        lcoe: +(base.lcoe).toFixed(0),
+    });
+    const scen = [make(0.8), base, make(1.2)];
+    const labels = ['-20%', 'Actuel', '+20%'];
+    const fmtN = n => n.toLocaleString('fr-FR');
+
+    let existing = document.getElementById('scenarioModal');
+    if (existing) existing.remove();
+
+    const modal = document.createElement('div');
+    modal.id = 'scenarioModal';
+    modal.className = 'fixed inset-0 z-[9999] bg-black/70 flex items-center justify-center p-4';
+    modal.innerHTML = `
+      <div class="bg-[#0f172a] border border-slate-700 rounded-xl p-5 w-full max-w-lg text-xs text-slate-300 shadow-2xl">
+        <div class="flex justify-between items-center mb-4">
+          <h3 class="text-sm font-bold text-solar-blue flex items-center gap-2">
+            <i data-lucide="git-compare" class="w-4 h-4"></i> Comparaison de scénarios
+          </h3>
+          <button onclick="document.getElementById('scenarioModal').remove()" class="text-slate-500 hover:text-red-400 text-lg leading-none">&times;</button>
+        </div>
+        <table class="w-full border-collapse">
+          <thead>
+            <tr class="text-slate-400 border-b border-slate-700">
+              <th class="text-left py-1.5 pr-2">Indicateur</th>
+              ${labels.map((l,i) => `<th class="text-center py-1.5 px-1 ${i===1?'text-solar-amber':''}">${l}</th>`).join('')}
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-800">
+            ${[
+              ['Panneaux', s => s.panels + ' pan.'],
+              ['Puissance crête', s => s.kwc + ' kWc'],
+              ['Production', s => fmtN(s.prod) + ' kWh/an'],
+              ['CAPEX', s => fmtN(s.capex) + ' XOF'],
+              ['Retour invest.', s => s.payback + ' ans'],
+              ['LCOE', s => fmtN(s.lcoe) + ' XOF/kWh'],
+            ].map(([name, fn]) => `
+              <tr>
+                <td class="py-1.5 pr-2 text-slate-400">${name}</td>
+                ${scen.map((s,i) => `<td class="py-1.5 px-1 text-center font-mono ${i===1?'text-solar-amber font-semibold':''}">${fn(s)}</td>`).join('')}
+              </tr>`).join('')}
+          </tbody>
+        </table>
+        <p class="mt-3 text-slate-600 text-center">Scénarios ±20% calculés par projection linéaire</p>
+      </div>`;
+    document.body.appendChild(modal);
+    _safeCreateIcons();
+}
+
+// =========================================================================
+// HISTORIQUE DES SIMULATIONS (sessionStorage)
+// =========================================================================
+function _saveSimHistory() {
+    if (!(_state.annualProduction_kWh > 0)) return;
+    const entry = {
+        ts: new Date().toLocaleTimeString('fr-FR', {hour:'2-digit',minute:'2-digit'}),
+        panels: STATE.panelCount,
+        kwc: +(_state.peakPower_kWc||0).toFixed(2),
+        prod: Math.round(_state.annualProduction_kWh),
+        payback: _state.paybackYears,
+    };
+    let hist = [];
+    try { hist = JSON.parse(sessionStorage.getItem('siHistory') || '[]'); } catch(e) {}
+    hist.unshift(entry);
+    hist = hist.slice(0, 5);
+    sessionStorage.setItem('siHistory', JSON.stringify(hist));
+    _renderSimHistory(hist);
+}
+
+function _renderSimHistory(hist) {
+    const wrap = document.getElementById('simHistory');
+    if (!wrap || !hist.length) return;
+    wrap.classList.remove('hidden');
+    wrap.innerHTML = '<p class="text-xs text-slate-500 mb-1">Simulations récentes</p>' +
+        hist.map((e, i) => `
+          <div class="rounded px-2 py-1 bg-slate-800/50 hover:bg-slate-700/50 cursor-pointer flex justify-between items-center gap-2 transition-colors"
+               onclick="_restoreSimHistory(${i})" title="Cliquer pour restaurer">
+            <span class="text-slate-500">${e.ts}</span>
+            <span class="text-slate-300">${e.panels} pan. · ${e.kwc} kWc</span>
+            <span class="text-solar-amber font-mono">${(e.prod/1000).toFixed(1)} MWh</span>
+          </div>`).join('');
+}
+
+function _restoreSimHistory(idx) {
+    let hist = [];
+    try { hist = JSON.parse(sessionStorage.getItem('siHistory') || '[]'); } catch(e) {}
+    const e = hist[idx];
+    if (!e) return;
+    // Note: restaure l'affichage uniquement — les parametres complets ne sont pas stockes
+    document.getElementById('simHistory')?.querySelectorAll('div').forEach((el,i) => {
+        el.style.outline = i === idx ? '1px solid #0EA5E9' : '';
+    });
+}
+
 function onBatteryModelChange() {
     const sel = document.getElementById('batteryModel').value;
     const bat = BATTERY_CATALOG.find(b => b.model === sel);
@@ -2032,7 +2230,7 @@ function renderApplianceTable() {
                 <input type="number" value="${cosPhi}" min="0.1" max="1" step="0.05"
                     class="si-input text-center py-1 px-1" style="width:44px;font-size:0.78rem"
                     title="Facteur de puissance (cos φ) — clim/moteur: 0.8, LED: 0.95, résistif: 1.0"
-                    oninput="applianceRows[${idx}].cos_phi=+this.value;refreshApplianceTotals()">
+                    oninput="applianceRows[${idx}].cos_phi=Math.max(0.1,Math.min(1,+this.value||1));this.value=applianceRows[${idx}].cos_phi;refreshApplianceTotals()">
             </td>
             <td class="py-1.5 px-1 text-right font-mono text-solar-amber" style="font-size:0.78rem">${kwhTotal.toFixed(2)}</td>
             <td class="py-1.5 px-1 text-right font-mono text-purple-400" style="font-size:0.78rem">${kva.toFixed(2)}</td>
@@ -2146,7 +2344,7 @@ async function generateReport() {
     status.textContent = 'Simulation + agents IA en cours…';
 
     const centroid  = STATE.centroid || { latitude: 14.6928, longitude: -17.4467 };
-    const senelecEl = document.getElementById('senelecTariff');
+    const senelecEl = document.getElementById(window._appMode === 'bilan' ? 'bilanSenelecTariff' : 'senelecTariff');
 
     const payload = {
         latitude:               centroid.latitude,
@@ -2345,6 +2543,7 @@ const API_BASE = (window.location.hostname === 'localhost' || window.location.ho
     ? 'http://localhost:8000'
     : window.location.origin;
 let backendCallTimeout = null;
+let _backendAbort = null;  // AbortController pour annuler les requetes obsoletes
 
 async function checkOllama() {
     try {
@@ -2391,8 +2590,14 @@ function callBackend() {
 async function _doCallBackend() {
     if (STATE.panelCount <= 0) return;
 
+    // Annuler la requete precedente en vol
+    if (_backendAbort) { _backendAbort.abort(); }
+    _backendAbort = new AbortController();
+
     const centroid = STATE.centroid || { latitude: 14.6928, longitude: -17.4467 };
-    const senelecEl = document.getElementById('senelecTariff');
+    // Lire le bon select Senelec selon le mode de travail
+    const isBilan = window._appMode === 'bilan';
+    const senelecEl = document.getElementById(isBilan ? 'bilanSenelecTariff' : 'senelecTariff');
     const senelecVal = senelecEl && senelecEl.value ? senelecEl.value : null;
     const payload = {
         latitude: centroid.latitude,
@@ -2402,7 +2607,7 @@ async function _doCallBackend() {
         electricity_price_kwh: STATE.electricity_price_kwh,
         annual_increase_pct: STATE.annual_increase_pct,
         senelec_tariff: senelecVal,
-        annual_consumption_kwh: STATE.annualConsumption || null,
+        annual_consumption_kwh: STATE.annualConsumption ?? null,
         cost_per_wc_xof: (+(document.getElementById('panelPriceWc')?.value || 350000)) / (STATE.panelPower || 545),
         system_lifetime_years: 25,
         degradation_pct_year: 0.5,
@@ -2419,7 +2624,7 @@ async function _doCallBackend() {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(payload),
-            signal: AbortSignal.timeout(30000),
+            signal: _backendAbort.signal,
         });
 
         if (!res.ok) return;
@@ -2454,8 +2659,17 @@ async function _doCallBackend() {
 
         document.getElementById('apiStatus').className = 'status-dot online';
         document.getElementById('apiStatusText').textContent = 'API en ligne';
-    } catch {
-        // Keep client-side estimates — no-op
+
+        // Post-simulation: indicateur qualite + historique + boutons actions
+        updateQualityBadge();
+        _saveSimHistory();
+        document.getElementById('btnExportCSV')?.classList.remove('hidden');
+        document.getElementById('btnCompare')?.classList.remove('hidden');
+    } catch(err) {
+        // Ignorer les AbortError (requete annulee intentionnellement)
+        if (err && err.name !== 'AbortError') {
+            // Keep client-side estimates — no-op
+        }
     }
 }
 
@@ -2960,10 +3174,10 @@ function _calpinageOneZone(zone, zoneIdx) {
     const annualKwh   = STATE.annualConsumption || 0;
     const selfUse     = _state.installType === 'autonome' ? 1.0
                       : _state.installType === 'hybride'  ? 0.85 : 0.70;
-    const panelPwr_kWc = (STATE.panelPower || 545) / 1000;
-    const MAX_PANELS  = annualKwh > 0
+    const panelPwr_kWc = Math.max((STATE.panelPower || 545), 10) / 1000;
+    const MAX_PANELS  = Math.min(annualKwh > 0
         ? Math.ceil((annualKwh / selfUse) / SPECIFIC_YIELD / panelPwr_kWc * 1.1)
-        : 5000;
+        : 5000, 10000);  // cap a 10 000 pour eviter boucle infinie
 
     const ZONE_COLORS = [
         { fill:[14,165,233,0.25],  stroke:[14,165,233,0.8]  },

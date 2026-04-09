@@ -74,6 +74,7 @@ export default function ControlsPanel() {
     irradianceMode, toggleIrradiance,
     sceneMode, setSceneMode, obstacleTypeToPlace,
     obstacles, removedPanels,
+    shadingPct,
     takeScreenshot,
   } = useStore()
 
@@ -81,7 +82,9 @@ export default function ControlsPanel() {
   const selfUse = installType === 'autonome' ? 1.0 : installType === 'hybride' ? 0.85 : 0.70
   const activeCount = panelCount - removedPanels.size
   const peakKwc = (activeCount * 0.545).toFixed(2)
-  const annualProduction = Math.round(activeCount * 0.545 * SPECIFIC_YIELD * (roofType === 'flat' ? 0.88 : 0.95))
+  // Meme formule que StatsPanel (pitch-aware) + facteur d'ombrage obstacles
+  const pitchFactor = roofType === 'flat' ? 0.88 : (0.9 + 0.1 * Math.sin((pitch * Math.PI) / 180))
+  const annualProduction = Math.round(activeCount * 0.545 * SPECIFIC_YIELD * pitchFactor * (1 - (shadingPct || 0) / 100))
   const coverage = annualConsumption > 0
     ? Math.min(100, Math.round((annualProduction * selfUse) / annualConsumption * 100))
     : null

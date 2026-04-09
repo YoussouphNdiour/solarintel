@@ -376,6 +376,7 @@ export default function SolarPanels({ localPoly, roofType, pitch, azimuth, wallH
   // Compute and report shadow factor to parent whenever obstacles or panels change
   useEffect(() => {
     if (obstacles.length === 0) {
+      useStore.setState({ shadingPct: 0 })
       window.parent.postMessage({ type: 'SHADOW_FACTOR', shadingPct: 0, obstacleCount: 0 }, '*')
       return
     }
@@ -407,7 +408,9 @@ export default function SolarPanels({ localPoly, roofType, pitch, azimuth, wallH
     }
 
     const shadingPct = activePanels.length > 0 ? (shadedCount / activePanels.length) * 100 : 0
-    window.parent.postMessage({ type: 'SHADOW_FACTOR', shadingPct: Math.round(shadingPct * 10) / 10, obstacleCount: obstacles.length }, '*')
+    const rounded = Math.round(shadingPct * 10) / 10
+    useStore.setState({ shadingPct: rounded })
+    window.parent.postMessage({ type: 'SHADOW_FACTOR', shadingPct: rounded, obstacleCount: obstacles.length }, '*')
   }, [panels, obstacles, panelCount, removedPanels, lat, lon])
 
   function handleClick(e: ThreeEvent<MouseEvent>) {
@@ -453,6 +456,7 @@ export default function SolarPanels({ localPoly, roofType, pitch, azimuth, wallH
 
   return (
     <instancedMesh
+      key={panels.length}
       ref={meshRef}
       args={[undefined, undefined, Math.max(panels.length, 1)]}
       castShadow

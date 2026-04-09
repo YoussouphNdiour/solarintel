@@ -43,6 +43,7 @@ interface AppState {
   // Obstacles
   obstacles: Obstacle[]
   selectedObstacle: number | null
+  shadingPct: number  // facteur d'ombrage obstacles (0-100)
 
   // Panel interaction
   selectedPanel: number | null
@@ -138,6 +139,7 @@ export const useStore = create<AppState>((set, get) => ({
 
   obstacles: [],
   selectedObstacle: null,
+  shadingPct: 0,
 
   selectedPanel: null,
   removedPanels: new Set(),
@@ -226,13 +228,14 @@ export const useStore = create<AppState>((set, get) => ({
     set({ selectedPanel: idx, selectedObstacle: null }),
 
   removeSelectedPanel: () => {
-    const { selectedPanel, removedPanels, panelCount } = get()
+    const { selectedPanel, removedPanels } = get()
     if (selectedPanel === null) return
     const next = new Set(removedPanels)
     next.add(selectedPanel)
+    // Ne pas decrementer panelCount : le compte "actif" = panelCount - removedPanels.size
+    // Decrementer panelCount causerait une double exclusion (panneau absent + index tronque)
     set({ removedPanels: next, selectedPanel: null, _popupData: null })
     window.parent.postMessage({ type: 'REMOVE_PANEL' }, '*')
-    set({ panelCount: Math.max(0, panelCount - 1) })
   },
 
   addPanel: () => {
@@ -268,15 +271,16 @@ export const useStore = create<AppState>((set, get) => ({
     if (!_glCanvas) return
     const wasIrradiance = irradianceMode
     if (wasIrradiance) {
+      // Etat initial: irradiance ON → passer en OFF pour capturer vue normale
       toggleIrradiance()
       setTimeout(() => {
         const normalUrl = _glCanvas.toDataURL('image/png')
         window.parent.postMessage({ type: 'SCREENSHOT_3D', dataUrl: normalUrl, mode: 'normal' }, '*')
-        toggleIrradiance()
+        toggleIrradiance() // repasser en ON pour capturer vue irradiance
         setTimeout(() => {
           const irrUrl = _glCanvas.toDataURL('image/png')
           window.parent.postMessage({ type: 'SCREENSHOT_3D', dataUrl: irrUrl, mode: 'irradiance' }, '*')
-          toggleIrradiance() // restore
+          // Pas de 3eme toggle : on est deja revenu a l'etat initial (irradiance ON)
         }, 300)
       }, 300)
     } else {
