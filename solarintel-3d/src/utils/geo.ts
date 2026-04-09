@@ -143,3 +143,25 @@ export function pointInPolygon(px: number, py: number, poly: [number, number][])
   }
   return inside
 }
+
+/**
+ * Calcule les offsets XZ (en mètres, espace Three.js) de chaque zone
+ * par rapport au centroïde global de l'ensemble des zones.
+ * Retourne une Map<zoneId, [offsetX, offsetZ]>
+ */
+export function computeZoneOffsets(zones: { id: string; centroid: [number, number] }[]): Map<string, [number, number]> {
+  if (zones.length === 0) return new Map()
+
+  const globalLon = zones.reduce((s, z) => s + z.centroid[0], 0) / zones.length
+  const globalLat = zones.reduce((s, z) => s + z.centroid[1], 0) / zones.length
+  const latRad = globalLat * Math.PI / 180
+  const R = 6371000
+
+  const offsets = new Map<string, [number, number]>()
+  for (const zone of zones) {
+    const dx = (zone.centroid[0] - globalLon) * Math.cos(latRad) * R * Math.PI / 180
+    const dz = -(zone.centroid[1] - globalLat) * R * Math.PI / 180   // -z = nord en Three.js
+    offsets.set(zone.id, [dx, dz])
+  }
+  return offsets
+}

@@ -33,6 +33,26 @@ export interface PanelInfo {
   estimatedProduction: number
 }
 
+export interface ZoneConfig {
+  id: string                          // index stringifié ou uuid
+  polygon: [number, number][]         // WGS84 ring [[lon,lat],...]
+  centroid: [number, number]          // [lon, lat]
+  roofType: RoofType | null
+  pitch: number
+  azimuth: number
+  wallHeight: number
+  roofMaterial: RoofMaterial
+  panelCount: number
+  panelPositions: [number, number][] | null
+  panelWidthMm: number
+  panelHeightMm: number
+  orientation: 'portrait' | 'landscape'
+  spacingHCm: number
+  spacingVCm: number
+  holePolygons: [number, number][][] | null
+  label?: string
+}
+
 export interface ParentMessage {
   type: 'INIT' | 'UPDATE_PANELS' | 'SET_AZIMUTH' | 'REQUEST_SCREENSHOTS' | 'REQUEST_SHADOW'
   polygon?: [number, number][]
@@ -49,6 +69,7 @@ export interface ParentMessage {
   spacingHCm?: number
   spacingVCm?: number
   azimuth?: number
+  zones?: ZoneConfig[]
 }
 
 export interface ChildMessage {

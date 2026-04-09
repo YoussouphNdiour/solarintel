@@ -3281,63 +3281,101 @@ function _send3DInit() {
     const frame = document.getElementById('view3dFrame');
     if (!frame || !frame.contentWindow) return;
 
-    // Use active zone polygon for 3D view (first zone for stability)
-    const polygon = (_state.zones && _state.zones.length > 0)
-        ? _state.zones[_state.activeZoneIdx >= 0 ? _state.activeZoneIdx : 0].polygon
-        : _state.polygon;
-    if (!polygon) return;
+    // Shared panel/spacing config (common to all zones)
+    var sharedCfg = {
+        panelWidthMm:  _state.panelWidth_mm  || 1134,
+        panelHeightMm: _state.panelHeight_mm || 2278,
+        orientation:   _state.orientation   || 'portrait',
+        spacingHCm:    _state.spacingH_cm    != null ? _state.spacingH_cm : 2,
+        spacingVCm:    _state.spacingV_cm    != null ? _state.spacingV_cm : 5,
+    };
 
-    // Extract first ring from ArcGIS polygon (array of [lon, lat] pairs)
-    const rings = polygon.rings || [];
-    const firstRing = Array.isArray(rings[0]) ? rings[0] : rings;
+    // ── Multi-zone path ──────────────────────────────────────────────────────
+    if (_state.zones && _state.zones.length > 0) {
+        // Group panel graphics by zone index (attribute.zone)
+        var panelsByZone = {};
+        if (panelLayer && panelLayer.graphics) {
+            var allGraphics = panelLayer.graphics.toArray ? panelLayer.graphics.toArray() : [];
+            allGraphics.forEach(function(g) {
+                var a = g.attributes || {};
+                var zIdx = typeof a.zone === 'number' ? a.zone : 0;
+                if (typeof a._cx === 'number' && typeof a._cy === 'number') {
+                    if (!panelsByZone[zIdx]) panelsByZone[zIdx] = [];
+                    panelsByZone[zIdx].push([a._cx, a._cy]);
+                }
+            });
+        }
 
-    const centroid = _state.centroid || {};
-
-    // Collect panel center positions (lon/lat) from 2D calpinage layer
-    // _cx/_cy are stored in attributes at creation time — no ring parsing needed
-    const panelPositions = [];
-    if (panelLayer && panelLayer.graphics) {
-        const all = panelLayer.graphics.toArray ? panelLayer.graphics.toArray() : [];
-        all.forEach(function(g) {
-            const a = g.attributes || {};
-            if (typeof a._cx === 'number' && typeof a._cy === 'number') {
-                panelPositions.push([a._cx, a._cy]);
-            }
-        });
-    }
-
-    // Collect hole polygon rings (WGS84 lon/lat) from all zones
-    const holePolygons = [];
-    if (_state.zones) {
-        _state.zones.forEach(function(zone) {
+        var zonesPayload = _state.zones.map(function(zone, idx) {
+            var rings = zone.polygon && zone.polygon.rings ? zone.polygon.rings : [];
+            var firstRing = Array.isArray(rings[0]) ? rings[0] : rings;
+            var zonePanels = panelsByZone[idx] || [];
+            var zoneHoles = [];
             if (zone.holes) {
                 zone.holes.forEach(function(hole) {
-                    if (hole && hole.rings && hole.rings[0]) {
-                        holePolygons.push(hole.rings[0]);
-                    }
+                    if (hole && hole.rings && hole.rings[0]) zoneHoles.push(hole.rings[0]);
                 });
             }
+            return Object.assign({
+                id: String(idx),
+                polygon: firstRing,
+                centroid: zone.centroid
+                    ? [zone.centroid.longitude, zone.centroid.latitude]
+                    : [-17.467, 14.716],
+                roofType: null,
+                pitch: _state.roofTilt || 15,
+                azimuth: _state.roofAzimuth || 180,
+                wallHeight: 3,
+                roofMaterial: 'tuile-grise',
+                panelCount: zonePanels.length,
+                panelPositions: zonePanels.length > 0 ? zonePanels : null,
+                holePolygons: zoneHoles.length > 0 ? zoneHoles : null,
+                label: zone.label || null,
+            }, sharedCfg);
+        });
+
+        // Global centroid = average of zone centroids
+        var globalLat = _state.zones.reduce(function(s, z) { return s + (z.centroid ? z.centroid.latitude : 14.716); }, 0) / _state.zones.length;
+        var globalLon = _state.zones.reduce(function(s, z) { return s + (z.centroid ? z.centroid.longitude : -17.467); }, 0) / _state.zones.length;
+
+        console.log('[SolarIntel 2D→3D] Sending', zonesPayload.length, 'zones');
+        frame.contentWindow.postMessage(Object.assign({
+            type: 'INIT',
+            zones: zonesPayload,
+            lat: globalLat,
+            lon: globalLon,
+            annualConsumption: _state.annualConsumption || 0,
+            installType: _state.installType || 'autoconsommation',
+        }, sharedCfg), '*');
+        return;
+    }
+
+    // ── Single-zone fallback ─────────────────────────────────────────────────
+    var polygon = _state.polygon;
+    if (!polygon) return;
+    var rings = polygon.rings || [];
+    var firstRing = Array.isArray(rings[0]) ? rings[0] : rings;
+    var centroid = _state.centroid || {};
+    var panelPositions = [];
+    if (panelLayer && panelLayer.graphics) {
+        var all = panelLayer.graphics.toArray ? panelLayer.graphics.toArray() : [];
+        all.forEach(function(g) {
+            var a = g.attributes || {};
+            if (typeof a._cx === 'number' && typeof a._cy === 'number') panelPositions.push([a._cx, a._cy]);
         });
     }
-    console.log('[SolarIntel 2D→3D] Sending', panelPositions.length, 'panel positions,', holePolygons.length, 'holes');
-
-    frame.contentWindow.postMessage({
+    console.log('[SolarIntel 2D→3D] Sending single zone,', panelPositions.length, 'panels');
+    frame.contentWindow.postMessage(Object.assign({
         type: 'INIT',
         polygon: firstRing,
         panelCount: _state.panelCount || 0,
         panelPositions: panelPositions,
-        holePolygons: holePolygons,
+        holePolygons: [],
         lat: centroid.latitude  || 14.716,
         lon: centroid.longitude || -17.467,
         annualConsumption: _state.annualConsumption || 0,
         installType: _state.installType || 'autoconsommation',
-        // Panel physical dimensions + spacing so 3D matches 2D calpinage grid exactly
-        panelWidthMm:  _state.panelWidth_mm  || 1134,
-        panelHeightMm: _state.panelHeight_mm || 2278,
-        orientation:   _state.orientation   || 'portrait',
-        spacingHCm:    _state.spacingH_cm    ?? 2,
-        spacingVCm:    _state.spacingV_cm    ?? 5,
-    }, '*');
+    }, sharedCfg), '*');
 }
 
 // Listen for messages back from the 3D viewer

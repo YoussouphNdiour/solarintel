@@ -75,18 +75,28 @@ interface Props {
   pitch: number
   azimuth: number
   wallHeight: number
+  // Props optionnelles pour multi-zone (surchargent le store)
+  overridePanelCount?: number
+  overridePanelPositions?: [number, number][] | null
+  overrideHolePolygons?: [number, number][][] | null
 }
 
 const EARTH_RADIUS = 6371000
 
-export default function SolarPanels({ localPoly, roofType, pitch, azimuth, wallHeight }: Props) {
+export default function SolarPanels({ localPoly, roofType, pitch, azimuth, wallHeight, overridePanelCount, overridePanelPositions, overrideHolePolygons }: Props) {
   const {
-    panelCount, selectedPanel, setSelectedPanel,
+    panelCount: storePanelCount, selectedPanel, setSelectedPanel,
     removedPanels, sceneMode, addPanel,
     irradianceMode, lat, lon, simDate, simHour, obstacles,
     panelWidthMm, panelHeightMm, orientation,
-    spacingHCm, spacingVCm, panelPositions, holePolygons,
+    spacingHCm, spacingVCm,
+    panelPositions: storePanelPositions,
+    holePolygons: storeHolePolygons,
   } = useStore()
+
+  const panelCount = overridePanelCount ?? storePanelCount
+  const panelPositions = overridePanelPositions !== undefined ? overridePanelPositions : storePanelPositions
+  const holePolygons = overrideHolePolygons !== undefined ? overrideHolePolygons : storeHolePolygons
   const meshRef = useRef<THREE.InstancedMesh>(null)
 
   const panels = useMemo<PanelPos[]>(() => {

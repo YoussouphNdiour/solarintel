@@ -92,8 +92,13 @@ const ROOF_CARDS: RoofCard[] = [
   },
 ]
 
-export default function RoofTypeModal() {
+interface Props {
+  zoneId?: string
+}
+
+export default function RoofTypeModal({ zoneId }: Props) {
   const setRoofType = useStore((s) => s.setRoofType)
+  const updateZone = useStore((s) => s.updateZone)
 
   return (
     <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
@@ -117,7 +122,13 @@ export default function RoofTypeModal() {
           {ROOF_CARDS.map((card) => (
             <button
               key={card.type}
-              onClick={() => setRoofType(card.type)}
+              onClick={() => {
+                if (zoneId) {
+                  updateZone(zoneId, { roofType: card.type })
+                } else {
+                  setRoofType(card.type)
+                }
+              }}
               className="group flex flex-col items-center gap-3 p-5 rounded-xl border border-[#334155] bg-[#0F172A] hover:border-[#0EA5E9] hover:bg-[#0EA5E9]/5 transition-all duration-200 text-left"
             >
               <div className="flex items-center justify-center w-full py-2 opacity-80 group-hover:opacity-100 transition-opacity">

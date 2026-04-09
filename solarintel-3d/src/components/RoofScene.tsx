@@ -2,7 +2,7 @@ import { useRef, useEffect, Suspense, useMemo } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { OrbitControls, Grid } from '@react-three/drei'
 import { useStore } from '../store/useStore'
-import { polygonToLocal, defaultPolygon } from '../utils/geo'
+import { polygonToLocal, defaultPolygon, computeZoneOffsets } from '../utils/geo'
 import Building from './Building'
 import Roof from './Roof'
 import SolarPanels from './SolarPanels'
@@ -12,9 +12,11 @@ import Obstacles from './Obstacles'
 import ObstaclePopup from './ObstaclePopup'
 import Measurements from './Measurements'
 import Compass from './Compass'
+import BuildingGroup from './BuildingGroup'
 
 function SceneContent() {
-  const { polygon, roofType, pitch, azimuth, wallHeight, tickSimulation, isPlaying } = useStore()
+  const { polygon, roofType, pitch, azimuth, wallHeight, tickSimulation, isPlaying,
+          zones, selectedZoneId } = useStore()
 
   useEffect(() => {
     if (!isPlaying) return
@@ -22,9 +24,15 @@ function SceneContent() {
     return () => clearInterval(id)
   }, [isPlaying, tickSimulation])
 
+  // Calcul des offsets (useMemo pour eviter recalcul)
+  const zoneOffsets = useMemo(() => computeZoneOffsets(zones), [zones])
+
+  // Multi-zone rendering
+  const multiZone = zones.length > 0
+
   const localPoly = useMemo(
-    () => polygon ? polygonToLocal(polygon) : defaultPolygon(),
-    [polygon]
+    () => !multiZone && polygon ? polygonToLocal(polygon) : defaultPolygon(),
+    [polygon, multiZone]
   )
 
   const grid = (
@@ -41,7 +49,7 @@ function SceneContent() {
     />
   )
 
-  if (roofType === null) {
+  if (!multiZone && roofType === null) {
     return (
       <>
         <SunLight />
@@ -56,23 +64,38 @@ function SceneContent() {
     <>
       <SunLight />
       <ambientLight intensity={0.2} />
-      <Building localPoly={localPoly} wallHeight={wallHeight} />
-      <Roof
-        localPoly={localPoly}
-        roofType={roofType}
-        pitch={pitch}
-        azimuth={azimuth}
-        wallHeight={wallHeight}
-      />
-      <SolarPanels
-        localPoly={localPoly}
-        roofType={roofType}
-        pitch={pitch}
-        azimuth={azimuth}
-        wallHeight={wallHeight}
-      />
-      <Obstacles localPoly={localPoly} wallHeight={wallHeight} />
-      <Measurements localPoly={localPoly} wallHeight={wallHeight} />
+      {multiZone ? (
+        <>
+          {zones.map(zone => {
+            const [ox, oz] = zoneOffsets.get(zone.id) || [0, 0]
+            return (
+              <BuildingGroup
+                key={zone.id}
+                zone={zone}
+                offsetX={ox}
+                offsetZ={oz}
+                isSelected={selectedZoneId === zone.id}
+                onClick={() => useStore.setState({ selectedZoneId: zone.id })}
+              />
+            )
+          })}
+          {/* Obstacles globaux */}
+          <Obstacles localPoly={localPoly} wallHeight={wallHeight} />
+        </>
+      ) : (
+        // Ancien rendu single-zone
+        <>
+          <Building localPoly={localPoly} wallHeight={wallHeight} />
+          {roofType && (
+            <>
+              <Roof localPoly={localPoly} roofType={roofType} pitch={pitch} azimuth={azimuth} wallHeight={wallHeight} />
+              <SolarPanels localPoly={localPoly} roofType={roofType} pitch={pitch} azimuth={azimuth} wallHeight={wallHeight} />
+            </>
+          )}
+          <Obstacles localPoly={localPoly} wallHeight={wallHeight} />
+          <Measurements localPoly={localPoly} wallHeight={wallHeight} />
+        </>
+      )}
       {grid}
     </>
   )

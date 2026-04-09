@@ -76,6 +76,7 @@ export default function ControlsPanel() {
     obstacles, removedPanels,
     shadingPct,
     takeScreenshot,
+    zones, selectedZoneId, selectZone,
   } = useStore()
 
   const SPECIFIC_YIELD = 1700
@@ -186,6 +187,46 @@ export default function ControlsPanel() {
             <span className="text-white text-sm font-semibold">Contrôles 3D</span>
           </div>
 
+          {/* Building selector (multi-zone) */}
+          {zones.length > 1 && (
+            <div className="px-3 pt-2 pb-1 border-b border-[#1E293B]">
+              <p className="text-[10px] text-[#64748B] uppercase tracking-wide mb-1.5 flex items-center gap-1">
+                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-2 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                </svg>
+                Batiment actif
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {zones.map((zone, i) => (
+                  <button
+                    key={zone.id}
+                    onClick={() => selectZone(zone.id)}
+                    className={`text-[10px] px-2 py-1 rounded font-medium transition-colors ${
+                      selectedZoneId === zone.id
+                        ? 'bg-[#0EA5E9] text-white'
+                        : 'bg-[#1E293B] text-[#94A3B8] hover:bg-[#334155]'
+                    }`}
+                  >
+                    Bat. {i + 1}{zone.label ? ` — ${zone.label}` : ''}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Selected zone info */}
+          {zones.length > 0 && selectedZoneId && (() => {
+            const selectedZone = zones.find(z => z.id === selectedZoneId)
+            if (!selectedZone) return null
+            return (
+              <div className="px-3 py-1.5 bg-[#0EA5E9]/5 border-b border-[#1E293B] text-[10px] text-[#94A3B8] flex gap-3 flex-wrap">
+                <span>{selectedZone.panelCount} panneaux</span>
+                {selectedZone.roofType && <span>Toit: {selectedZone.roofType}</span>}
+                <span>Incl: {selectedZone.pitch}° / Az: {selectedZone.azimuth}°</span>
+              </div>
+            )
+          })()}
+
           <div className="p-4 space-y-5 max-h-[calc(100vh-120px)] overflow-y-auto scrollbar-thin">
 
             {/* Roof */}
@@ -286,6 +327,63 @@ export default function ControlsPanel() {
                 ))}
               </div>
             </Section>
+
+            {/* Outils SketchUp */}
+            <div className="px-3 py-2 space-y-2 border-t border-[#1E293B]">
+              <p className="text-[10px] text-[#64748B] uppercase tracking-wide">Outils construction</p>
+
+              {/* Hauteur mur avec glissiere */}
+              <div>
+                <div className="flex justify-between items-center mb-1">
+                  <label className="text-[11px] text-[#94A3B8]">Hauteur mur</label>
+                  <span className="text-[11px] font-mono text-[#F59E0B]">{wallHeight.toFixed(1)} m</span>
+                </div>
+                <input
+                  type="range" min="2" max="12" step="0.5" value={wallHeight}
+                  onChange={e => setWallHeight(+e.target.value)}
+                  className="w-full h-1.5 accent-[#F59E0B] cursor-pointer"
+                />
+                <div className="flex justify-between text-[9px] text-[#475569] mt-0.5">
+                  <span>2m (RDC)</span><span>5m (R+1)</span><span>12m (R+3)</span>
+                </div>
+              </div>
+
+              {/* Preset batiments */}
+              <div>
+                <p className="text-[10px] text-[#64748B] mb-1">Presets</p>
+                <div className="grid grid-cols-3 gap-1">
+                  {[
+                    { label: 'Villa', wall: 3, pitch: 20 },
+                    { label: 'Immeuble', wall: 9, pitch: 5 },
+                    { label: 'Hangar', wall: 5, pitch: 10 },
+                  ].map(preset => (
+                    <button
+                      key={preset.label}
+                      onClick={() => { setWallHeight(preset.wall); setPitch(preset.pitch) }}
+                      className="text-[10px] py-1 px-1.5 rounded bg-[#1E293B] text-[#94A3B8] hover:bg-[#334155] hover:text-white transition-colors text-center"
+                    >
+                      {preset.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Orientation rapide */}
+              <div>
+                <p className="text-[10px] text-[#64748B] mb-1">Orientation faitage</p>
+                <div className="grid grid-cols-4 gap-1">
+                  {[{ label: 'S', az: 180 }, { label: 'SE', az: 135 }, { label: 'SW', az: 225 }, { label: 'E/W', az: 90 }].map(o => (
+                    <button
+                      key={o.label}
+                      onClick={() => setAzimuth(o.az)}
+                      className={`text-[10px] py-1 rounded transition-colors ${Math.abs(azimuth - o.az) < 15 ? 'bg-[#0EA5E9] text-white' : 'bg-[#1E293B] text-[#94A3B8] hover:bg-[#334155]'}`}
+                    >
+                      {o.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
 
             <div className="h-px bg-[#334155]" />
 

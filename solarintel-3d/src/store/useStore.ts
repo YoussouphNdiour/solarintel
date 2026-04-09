@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { RoofType, InstallType, Obstacle, ObstacleType, SceneMode, WeatherMode, RoofMaterial } from '../types'
+import { RoofType, InstallType, Obstacle, ObstacleType, SceneMode, WeatherMode, RoofMaterial, ZoneConfig } from '../types'
 
 let _obstacleIdCounter = 0
 
@@ -19,6 +19,10 @@ interface AppState {
   orientation: 'portrait' | 'landscape'
   spacingHCm: number
   spacingVCm: number
+
+  // Multi-zone
+  zones: ZoneConfig[]
+  selectedZoneId: string | null
 
   // Roof configuration
   roofType: RoofType | null
@@ -78,7 +82,11 @@ interface AppState {
     orientation?: 'portrait' | 'landscape'
     spacingHCm?: number
     spacingVCm?: number
+    zones?: ZoneConfig[]
   }) => void
+  setZones: (zones: ZoneConfig[]) => void
+  updateZone: (id: string, patch: Partial<ZoneConfig>) => void
+  selectZone: (id: string | null) => void
   setPanelCount: (count: number) => void
   setRoofType: (type: RoofType) => void
   setPitch: (pitch: number) => void
@@ -121,6 +129,9 @@ export const useStore = create<AppState>((set, get) => ({
   spacingHCm: 2,
   spacingVCm: 5,
 
+  zones: [],
+  selectedZoneId: null,
+
   roofType: null,
   pitch: 15,
   azimuth: 180,
@@ -157,19 +168,32 @@ export const useStore = create<AppState>((set, get) => ({
 
   setFromParent: (data) =>
     set((s) => {
-      const hasPositions = Array.isArray(data.panelPositions) && data.panelPositions.length > 0
-      const newPositions = hasPositions ? data.panelPositions! : s.panelPositions
+      // Multi-zone support: if zones array is provided, extract first zone for backward compat
+      const hasZones = Array.isArray(data.zones) && data.zones.length > 0
+      const zones = hasZones ? data.zones! : s.zones
+      const selectedZoneId = hasZones ? data.zones![0].id : s.selectedZoneId
+
+      // Extract backward-compat fields from first zone when zones are provided
+      const firstZone = hasZones ? data.zones![0] : null
+      const effectivePolygon = firstZone ? firstZone.polygon : data.polygon
+      const effectivePanelPositions = firstZone ? firstZone.panelPositions : data.panelPositions
+      const effectiveHolePolygons = firstZone ? firstZone.holePolygons : data.holePolygons
+
+      const hasPositions = Array.isArray(effectivePanelPositions) && effectivePanelPositions.length > 0
+      const newPositions = hasPositions ? effectivePanelPositions! : s.panelPositions
       // Use position count when real positions are available; otherwise use explicit panelCount
       const newCount = hasPositions
-        ? data.panelPositions!.length
+        ? effectivePanelPositions!.length
         : (data.panelCount ?? s.panelCount)
       // Reset 3D-only panel removals only when fresh 2D positions arrive
       const newRemoved = hasPositions ? new Set<number>() : s.removedPanels
       return {
-        polygon: data.polygon ?? s.polygon,
+        zones,
+        selectedZoneId,
+        polygon: effectivePolygon ?? s.polygon,
         panelCount: newCount,
         panelPositions: newPositions,
-        holePolygons: data.holePolygons ?? s.holePolygons,
+        holePolygons: effectiveHolePolygons ?? s.holePolygons,
         removedPanels: newRemoved,
         lat: data.lat ?? s.lat,
         lon: data.lon ?? s.lon,
@@ -183,18 +207,58 @@ export const useStore = create<AppState>((set, get) => ({
       }
     }),
 
+  setZones: (zones) => set({ zones }),
+
+  updateZone: (id, patch) =>
+    set((s) => ({
+      zones: s.zones.map((z) => (z.id === id ? { ...z, ...patch } : z)),
+    })),
+
+  selectZone: (id) => set({ selectedZoneId: id }),
+
   setPanelCount: (count) => set({ panelCount: count, removedPanels: new Set() }),
 
-  setRoofType: (type) => set({ roofType: type }),
+  setRoofType: (type) =>
+    set((s) => {
+      if (s.selectedZoneId) {
+        return {
+          roofType: type,
+          zones: s.zones.map((z) =>
+            z.id === s.selectedZoneId ? { ...z, roofType: type } : z
+          ),
+        }
+      }
+      return { roofType: type }
+    }),
 
   setPitch: (pitch) => {
-    set({ pitch })
-    window.parent.postMessage({ type: 'TILT_AZIMUTH', tilt: pitch, azimuth: get().azimuth }, '*')
+    const { selectedZoneId, zones, azimuth } = get()
+    if (selectedZoneId) {
+      set({
+        pitch,
+        zones: zones.map((z) =>
+          z.id === selectedZoneId ? { ...z, pitch } : z
+        ),
+      })
+    } else {
+      set({ pitch })
+    }
+    window.parent.postMessage({ type: 'TILT_AZIMUTH', tilt: pitch, azimuth }, '*')
   },
 
   setAzimuth: (azimuth) => {
-    set({ azimuth })
-    window.parent.postMessage({ type: 'TILT_AZIMUTH', tilt: get().pitch, azimuth }, '*')
+    const { selectedZoneId, zones, pitch } = get()
+    if (selectedZoneId) {
+      set({
+        azimuth,
+        zones: zones.map((z) =>
+          z.id === selectedZoneId ? { ...z, azimuth } : z
+        ),
+      })
+    } else {
+      set({ azimuth })
+    }
+    window.parent.postMessage({ type: 'TILT_AZIMUTH', tilt: pitch, azimuth }, '*')
   },
 
   setWallHeight: (wallHeight) => set({ wallHeight }),
