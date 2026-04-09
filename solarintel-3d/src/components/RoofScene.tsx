@@ -13,6 +13,9 @@ import ObstaclePopup from './ObstaclePopup'
 import Measurements from './Measurements'
 import Compass from './Compass'
 import BuildingGroup from './BuildingGroup'
+import DrawnBuildings from './DrawnBuildings'
+import DrawingScene from './DrawingScene'
+import DrawingToolbar from './DrawingToolbar'
 
 function SceneContent() {
   const { polygon, roofType, pitch, azimuth, wallHeight, tickSimulation, isPlaying,
@@ -55,6 +58,8 @@ function SceneContent() {
         <SunLight />
         <ambientLight intensity={0.3} />
         <Building localPoly={localPoly} wallHeight={wallHeight} />
+        <DrawnBuildings />
+        <DrawingScene />
         {grid}
       </>
     )
@@ -96,22 +101,32 @@ function SceneContent() {
           <Measurements localPoly={localPoly} wallHeight={wallHeight} />
         </>
       )}
+      <DrawnBuildings />
+      <DrawingScene />
       {grid}
     </>
   )
 }
 
-// ── Escape key cancels placement mode ──────────────────────────────────────
+// ── Escape key cancels placement mode or drawing ───────────────────────────
 function EscapeHandler() {
-  const { sceneMode, setSceneMode } = useStore()
+  const { sceneMode, setSceneMode, drawPhase, setDrawPhase, setDrawCorner1, setDrawLinePoints, setDrawFootprint } = useStore()
   useEffect(() => {
-    if (sceneMode === 'view') return
     function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') setSceneMode('view')
+      if (e.key === 'Escape') {
+        if (drawPhase !== 'idle') {
+          setDrawPhase('idle')
+          setDrawCorner1(null)
+          setDrawLinePoints([])
+          setDrawFootprint(null)
+        } else if (sceneMode !== 'view') {
+          setSceneMode('view')
+        }
+      }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [sceneMode, setSceneMode])
+  }, [sceneMode, setSceneMode, drawPhase, setDrawPhase, setDrawCorner1, setDrawLinePoints, setDrawFootprint])
   return null
 }
 
@@ -145,7 +160,7 @@ function ResetCameraButton({ controlsRef }: { controlsRef: React.RefObject<any> 
 
 export default function RoofScene() {
   const controlsRef = useRef<any>(null)
-  const { sceneMode } = useStore()
+  const { sceneMode, drawTool } = useStore()
 
   return (
     <div className="absolute inset-0">
@@ -169,7 +184,7 @@ export default function RoofScene() {
 
         <OrbitControls
           ref={controlsRef}
-          enabled={sceneMode === 'view'}
+          enabled={sceneMode === 'view' && drawTool === 'orbit'}
           enablePan
           enableZoom
           enableRotate
@@ -185,6 +200,7 @@ export default function RoofScene() {
       <ObstaclePopup />
       <ResetCameraButton controlsRef={controlsRef} />
       <Compass />
+      <DrawingToolbar />
     </div>
   )
 }

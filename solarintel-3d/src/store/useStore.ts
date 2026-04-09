@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { RoofType, InstallType, Obstacle, ObstacleType, SceneMode, WeatherMode, RoofMaterial, ZoneConfig } from '../types'
+import { RoofType, InstallType, Obstacle, ObstacleType, SceneMode, WeatherMode, RoofMaterial, ZoneConfig, DrawTool, DrawPhase, DrawnBuilding } from '../types'
 
 let _obstacleIdCounter = 0
 
@@ -67,6 +67,17 @@ interface AppState {
   // Internal GL ref for screenshot
   _glCanvas: HTMLCanvasElement | null
 
+  // Drawing tool state
+  drawTool: DrawTool
+  drawPhase: DrawPhase
+  drawCorner1: [number, number] | null
+  drawLinePoints: [number, number][]
+  drawPreviewPos: [number, number] | null
+  drawPreviewHeight: number
+  drawFootprint: [number, number][] | null
+  drawnBuildings: DrawnBuilding[]
+  selectedDrawnId: string | null
+
   // Actions
   setFromParent: (data: {
     polygon?: [number, number][]
@@ -112,6 +123,19 @@ interface AppState {
   setGlCanvas: (canvas: HTMLCanvasElement) => void
   takeScreenshot: () => void
   requestScreenshots: () => void
+
+  // Drawing actions
+  setDrawTool: (tool: DrawTool) => void
+  setDrawPhase: (phase: DrawPhase) => void
+  setDrawCorner1: (pt: [number, number] | null) => void
+  setDrawLinePoints: (pts: [number, number][]) => void
+  setDrawPreviewPos: (pt: [number, number] | null) => void
+  setDrawPreviewHeight: (h: number) => void
+  setDrawFootprint: (pts: [number, number][] | null) => void
+  addDrawnBuilding: (b: DrawnBuilding) => void
+  updateDrawnBuilding: (id: string, changes: Partial<DrawnBuilding>) => void
+  removeDrawnBuilding: (id: string) => void
+  setSelectedDrawnId: (id: string | null) => void
 }
 
 export const useStore = create<AppState>((set, get) => ({
@@ -163,6 +187,16 @@ export const useStore = create<AppState>((set, get) => ({
   _popupY: 0,
   _obstaclePanelOpen: false,
   _glCanvas: null,
+
+  drawTool: 'orbit',
+  drawPhase: 'idle',
+  drawCorner1: null,
+  drawLinePoints: [],
+  drawPreviewPos: null,
+  drawPreviewHeight: 3,
+  drawFootprint: null,
+  drawnBuildings: [],
+  selectedDrawnId: null,
 
   // ── Actions ────────────────────────────────────────────────────────────────
 
@@ -358,4 +392,45 @@ export const useStore = create<AppState>((set, get) => ({
       }, 300)
     }
   },
+
+  // ── Drawing actions ────────────────────────────────────────────────────────
+
+  setDrawTool: (tool) =>
+    set({
+      drawTool: tool,
+      drawPhase: 'idle',
+      drawCorner1: null,
+      drawLinePoints: [],
+      drawPreviewPos: null,
+      drawFootprint: null,
+      selectedDrawnId: null,
+    }),
+
+  setDrawPhase: (phase) => set({ drawPhase: phase }),
+
+  setDrawCorner1: (pt) => set({ drawCorner1: pt }),
+
+  setDrawLinePoints: (pts) => set({ drawLinePoints: pts }),
+
+  setDrawPreviewPos: (pt) => set({ drawPreviewPos: pt }),
+
+  setDrawPreviewHeight: (h) => set({ drawPreviewHeight: h }),
+
+  setDrawFootprint: (pts) => set({ drawFootprint: pts }),
+
+  addDrawnBuilding: (b) =>
+    set((s) => ({ drawnBuildings: [...s.drawnBuildings, b] })),
+
+  updateDrawnBuilding: (id, changes) =>
+    set((s) => ({
+      drawnBuildings: s.drawnBuildings.map((b) => (b.id === id ? { ...b, ...changes } : b)),
+    })),
+
+  removeDrawnBuilding: (id) =>
+    set((s) => ({
+      drawnBuildings: s.drawnBuildings.filter((b) => b.id !== id),
+      selectedDrawnId: s.selectedDrawnId === id ? null : s.selectedDrawnId,
+    })),
+
+  setSelectedDrawnId: (id) => set({ selectedDrawnId: id }),
 }))

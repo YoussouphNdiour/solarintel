@@ -6,6 +6,24 @@ export type WeatherMode = 'clear' | 'cloudy' | 'overcast'
 
 export type RoofMaterial = 'tuile-rouge' | 'tuile-grise' | 'zinc' | 'bac-acier' | 'beton'
 
+export type DrawTool = 'orbit' | 'select' | 'rectangle' | 'line' | 'push-pull' | 'move' | 'erase'
+
+export type DrawPhase =
+  | 'idle'
+  | 'rect-corner2'     // placed corner1, waiting for corner2
+  | 'rect-height'      // footprint set, inputting height
+  | 'line-placing'     // drawing line segments
+  | 'line-height'      // polygon closed, inputting height
+  | 'push-pull-drag'   // dragging to change height
+  | 'move-drag'        // dragging to move building
+
+export interface DrawnBuilding {
+  id: string
+  footprint: [number, number][]   // local XY (meters from global origin)
+  height: number
+  color: string
+}
+
 export interface LocalPolygon {
   points: [number, number][]
   centroid: [number, number]
