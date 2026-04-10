@@ -4336,337 +4336,422 @@ function renderSchemaUnifilaireFromState() {
 }
 
 function _buildSchemaSVG(c) {
-    // Grid: 60px per cell, cols A-K (0-10), rows 0-17
-    const CW = 75, RH = 52;
-    const W = CW * 11 + 20, H = RH * 17 + 80;
-    const cx = (col) => col * CW + 10;   // left edge of col
-    const cy = (row) => row * RH + 40;   // top edge of row
-    const mx = (col) => cx(col) + CW / 2; // center of col
-    const my = (row) => cy(row) + RH / 2; // center of row
+    // ── Layout grid (matching reference A-K / 1-17) ─────────────────────────
+    const CW = 76, RH = 54;
+    const OX = 18, OY = 44;
+    const W = CW * 11 + OX * 2, H = RH * 17 + OY + 50;
+    const cx  = col => OX + col * CW;           // left edge of col
+    const cy  = row => OY + row * RH;           // top edge of row
+    const mx  = col => OX + col * CW + CW / 2; // center X of col
+    const my  = row => OY + row * RH + RH / 2; // center Y of row
 
-    // Colors
-    const DC = '#B91C1C';   // red — DC wires
-    const AC = '#1E40AF';   // blue — AC wires
-    const PE = '#16A34A';   // green — PE
-    const GRID_C = '#EA580C'; // orange — grid
-    const BG = '#FFFFFF';
-    const BORDER = '#374151';
-    const TEXT = '#111827';
-    const LBLSM = 'font-size:9px;font-family:Arial,sans-serif;fill:#374151;';
-    const LBLMD = 'font-size:10px;font-family:Arial,sans-serif;fill:#111827;font-weight:600;';
-    const LBLLG = 'font-size:12px;font-family:Arial,sans-serif;fill:#111827;font-weight:700;';
+    // ── Colors (matching reference) ─────────────────────────────────────────
+    const DC   = '#CC0000';  // red  — DC wires
+    const AC   = '#1A3DB5';  // blue — AC wires
+    const PE   = '#166534';  // green — PE
+    const GRC  = '#C05A00';  // orange — Grid
+    const BORD = '#374151';
+    const SM   = 'font-family:Arial,sans-serif;font-size:8px;fill:#374151;';
+    const MD   = 'font-family:Arial,sans-serif;font-size:9.5px;fill:#111827;';
+    const LG   = 'font-family:Arial,sans-serif;font-size:12px;fill:#111827;font-weight:700;';
 
-    // nStrings determines how many PV string columns we draw (cols D, E, [F, G] for 3+)
-    const ns = Math.min(c.nStrings, 4); // display max 4 strings
-    const stringCols = [];
-    for (let i = 0; i < ns; i++) stringCols.push(3 + i); // cols D=3, E=4, F=5, G=6
+    const ns = Math.min(Math.max(c.nStrings, 1), 4);
+    // String cols: D=3, E=4, F=5, G=6
+    const strCols = Array.from({length: ns}, (_, i) => 3 + i);
 
-    let svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" style="background:${BG};font-family:Arial,sans-serif;">`;
+    // ── Primitive helpers ────────────────────────────────────────────────────
+    const R = (x,y,w,h,fill,stroke,sw=1.5,rx=0) =>
+        `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" rx="${rx}"/>`;
+    const L = (x1,y1,x2,y2,col,sw=1.5,dash='') =>
+        `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${col}" stroke-width="${sw}"${dash?` stroke-dasharray="${dash}"`:''}/>`;
+    const T = (x,y,t,st,a='middle') =>
+        `<text x="${x}" y="${y}" text-anchor="${a}" style="${st}">${t}</text>`;
+    const DOT = (x,y,col,r=3.5) => `<circle cx="${x}" cy="${y}" r="${r}" fill="${col}"/>`;
+    const POLY = (pts,fill,stroke,sw=1) =>
+        `<polygon points="${pts}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}"/>`;
 
-    // ── Grid lines (light) ──────────────────────────────────────────────────
+    // ── Electrical symbols ───────────────────────────────────────────────────
+
+    // PV panel: rectangle with X inside + terminal dots
+    function pvSymbol(px, py, pw=26, ph=32) {
+        let g = R(px-pw/2, py-ph/2, pw, ph, '#FEF2F2', DC, 1.5);
+        g += L(px-pw/2+3, py-ph/2+3, px+pw/2-3, py+ph/2-3, DC, 0.7);
+        g += L(px+pw/2-3, py-ph/2+3, px-pw/2+3, py+ph/2-3, DC, 0.7);
+        g += DOT(px, py-ph/2, DC, 2.5);
+        g += DOT(px, py+ph/2, DC, 2.5);
+        return g;
+    }
+
+    // Bypass diode: triangle pointing down with bar
+    function diode(px, py) {
+        const s = 7;
+        return POLY(`${px-s},${py-s} ${px+s},${py-s} ${px},${py+s}`, DC, DC, 0.5)
+             + L(px-s, py+s, px+s, py+s, DC, 2);
+    }
+
+    // Fuse (vertical): two short dashes inside rectangle
+    function fuseV(px, py, label) {
+        let g = L(px, py-22, px, py-10, DC, 1.5);
+        g += R(px-8, py-10, 16, 20, '#FFFBEB', DC, 1.5, 1);
+        g += L(px-5, py-4, px+5, py-4, DC, 1);
+        g += L(px-5, py+4, px+5, py+4, DC, 1);
+        g += L(px, py+10, px, py+22, DC, 1.5);
+        g += T(px+12, py-8, 'Fusible', SM + 'fill:#7C2D12;', 'start');
+        g += T(px+12, py+4, label,    SM + 'fill:#7C2D12;font-weight:700;', 'start');
+        g += T(px-10, py-20, '1', SM, 'end');
+        g += T(px-10, py+22, '2', SM, 'end');
+        return g;
+    }
+
+    // AC Fuse (vertical, blue)
+    function acFuseV(px, py, label) {
+        let g = L(px, py-22, px, py-10, AC, 1.5);
+        g += R(px-8, py-10, 16, 20, '#EFF6FF', AC, 1.5, 1);
+        g += L(px-5, py-4, px+5, py-4, AC, 1);
+        g += L(px-5, py+4, px+5, py+4, AC, 1);
+        g += L(px, py+10, px, py+22, AC, 1.5);
+        g += T(px-12, py-4, `Fusible\n${label}`, SM + `fill:${AC};`, 'end');
+        g += T(px-12, py-12, 'Fusible', SM + `fill:${AC};`, 'end');
+        g += T(px-12, py, label, SM + `fill:${AC};font-weight:700;`, 'end');
+        g += T(px+10, py-20, '1', SM, 'start');
+        g += T(px+10, py+22, '2', SM, 'start');
+        return g;
+    }
+
+    // Parafoudre DC: box with ↓ arrow + ground symbol
+    function parafoudre(px, py, perString) {
+        let g = '';
+        g += L(px, py-28, px, py-16, DC, 1.5);
+        g += R(px-22, py-16, 44, 28, '#FFF7ED', '#C2410C', 1.5, 2);
+        g += T(px, py-4, '↓', 'font-family:Arial;font-size:16px;fill:#C2410C;font-weight:700;');
+        // Ground below box
+        g += L(px, py+12, px, py+20, '#C2410C', 1.5);
+        g += L(px-12, py+20, px+12, py+20, '#C2410C', 2);
+        g += L(px-7, py+25, px+7, py+25, '#C2410C', 1.5);
+        g += L(px-3, py+30, px+3, py+30, '#C2410C', 1);
+        if (perString) {
+            g += T(px, py-24, 'PF DC', SM + 'fill:#9A3412;font-weight:700;');
+            g += T(px, py+42, '1000V/20KA', SM + 'fill:#9A3412;');
+        } else {
+            g += T(px-26, py-6, 'Parafoudre DC', SM + 'fill:#9A3412;', 'end');
+            g += T(px-26, py+8, '1000V / 20 KA', SM + 'fill:#9A3412;', 'end');
+        }
+        return g;
+    }
+
+    // AC circuit breaker — vertical disconnect switch with "C N" label
+    function breakerV(px, py, label, col=AC) {
+        let g = L(px, py-28, px, py-8, col, 1.5);
+        // "x" disconnect symbol
+        g += L(px-5, py-8, px+5, py+8, col, 1.5);
+        g += L(px-5, py+8, px+5, py-8, col, 0.7);
+        g += L(px, py+8, px, py+18, col, 1.5);
+        g += R(px-9, py+18, 18, 20, '#EFF6FF', col, 1.5, 1);
+        g += T(px, py+31, `C ${label}`, SM + `fill:${col};font-weight:700;`);
+        g += T(px-7, py-24, '1', SM, 'end');
+        g += T(px-7, py+12, '2', SM, 'end');
+        return g;
+    }
+
+    // Rotary battery switch
+    function batSwitch(px, py, label) {
+        let g = L(px, py-20, px, py-12, '#166534', 1.5);
+        g += `<circle cx="${px}" cy="${py}" r="12" fill="#F0FDF4" stroke="#166534" stroke-width="1.5"/>`;
+        g += L(px, py, px+9, py-6, '#166534', 1.5);
+        g += DOT(px, py, '#166534', 2);
+        g += L(px, py+12, px, py+20, '#166534', 1.5);
+        g += T(px-16, py-12, 'Batterie switch', SM + 'fill:#166534;', 'end');
+        g += T(px-16, py, label, SM + 'fill:#166534;font-weight:700;', 'end');
+        g += T(px+16, py-20, '1', SM, 'start');
+        g += T(px+16, py+22, '2', SM, 'start');
+        return g;
+    }
+
+    // Inverseur / ATS box (reference style: rectangle with terminal numbers)
+    function inverseur(px, py, label) {
+        let g = L(px, py-26, px, py-14, AC, 1.5);
+        g += R(px-22, py-14, 44, 28, '#EFF6FF', AC, 1.5, 2);
+        g += T(px, py+2, 'Inverseur', MD + `fill:${AC};font-weight:700;font-size:8.5px;`);
+        g += L(px, py+14, px, py+26, AC, 1.5);
+        g += T(px-26, py-22, '12', SM);
+        g += T(px-26, py+10, '14', SM);
+        g += T(px-26, py+26, '11', SM);
+        g += T(px+26, py+2, label, SM + `fill:${AC};font-weight:700;`, 'start');
+        return g;
+    }
+
+    // Big inverter box (reference: large blue rectangle)
+    function inverterBox(bx, by, bw, bh) {
+        let g = R(bx, by, bw, bh, '#F0F4FF', AC, 2.5, 0);
+        // = DC symbol left
+        const dlx = bx + bw * 0.22, dly = by + bh * 0.42;
+        g += L(dlx-22, dly, dlx+22, dly, DC, 2.5);
+        g += L(dlx-22, dly+7, dlx+22, dly+7, DC, 2.5);
+        g += T(dlx+28, dly+10, 'DC', `font-family:Arial;font-size:14px;fill:${DC};font-weight:700;`, 'start');
+        // Diagonal line (inverter symbol)
+        g += L(bx+14, by+bh-14, bx+bw-14, by+14, AC, 2);
+        // AC ~ symbol right
+        const arx = bx + bw * 0.72, ary = by + bh * 0.58;
+        g += L(arx-22, ary, arx-6, ary, AC, 2.5);
+        g += L(arx-6, ary, arx-6, ary-9, AC, 2.5);
+        g += L(arx-6, ary-9, arx+6, ary-9, AC, 2.5);
+        g += T(arx+12, ary+4, 'AC', `font-family:Arial;font-size:14px;fill:${AC};font-weight:700;`, 'start');
+        return g;
+    }
+
+    // Battery pack box (reference: dark border, bold text)
+    function batPack(bx, by, bw, bh, lines) {
+        let g = R(bx, by, bw, bh, '#F8FFF9', '#1F2937', 2.5, 2);
+        let ty = by + 18;
+        for (const ln of lines) {
+            const bold = ln.startsWith('**');
+            const t = bold ? ln.slice(2,-2) : ln;
+            g += T(bx+bw/2, ty, t, MD + (bold ? 'font-weight:700;' : '') + 'fill:#111827;');
+            ty += 15;
+        }
+        return g;
+    }
+
+    // GRID box (orange border)
+    function gridBox(gx, gy) {
+        return R(gx-34, gy-18, 68, 36, '#FFF7ED', GRC, 2.5, 3)
+             + T(gx, gy+6, 'GRID', `font-family:Arial;font-size:16px;fill:${GRC};font-weight:700;`);
+    }
+
+    // Loads list box
+    function loadsListBox(lx, ly, items) {
+        const lh = 13, pad = 7;
+        const h = (items.length + 1) * lh + pad * 2;
+        let g = R(lx, ly, 130, h, '#F9FAFB', BORD, 1, 2);
+        g += T(lx+65, ly+pad+10, 'Loads', MD + 'font-weight:700;fill:#111827;');
+        items.forEach((it, i) => {
+            g += T(lx+6, ly+pad+10+(i+1)*lh, it, SM + 'fill:#374151;', 'start');
+        });
+        return g;
+    }
+
+    // ── SVG start ─────────────────────────────────────────────────────────────
+    let svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">`;
+    svg += R(0, 0, W, H, '#FFFFFF', 'none');
+
+    // ── Grid lines ────────────────────────────────────────────────────────────
     svg += `<g stroke="#E5E7EB" stroke-width="0.5">`;
-    for (let c2 = 0; c2 <= 11; c2++) svg += `<line x1="${cx(c2)}" y1="35" x2="${cx(c2)}" y2="${H - 40}"/>`;
-    for (let r = 0; r <= 17; r++) svg += `<line x1="10" y1="${cy(r)}" x2="${W - 10}" y2="${cy(r)}"/>`;
+    for (let ci = 0; ci <= 11; ci++) svg += L(cx(ci), OY-6, cx(ci), H-36, '#E5E7EB', 0.5);
+    for (let ri = 0; ri <= 17; ri++) svg += L(OX, cy(ri), W-OX, cy(ri), '#E5E7EB', 0.5);
     svg += `</g>`;
 
-    // ── Column headers ──────────────────────────────────────────────────────
-    const colLetters = ['A','B','C','D','E','F','G','H','I','J','K'];
-    colLetters.forEach((l, i) => {
-        svg += `<text x="${mx(i)}" y="26" text-anchor="middle" style="font-size:10px;font-family:Arial;fill:#9CA3AF;">${l}</text>`;
-    });
-    for (let r = 1; r <= 16; r++) {
-        svg += `<text x="6" y="${my(r - 0.5) + 4}" text-anchor="middle" style="font-size:9px;font-family:Arial;fill:#9CA3AF;">${r}</text>`;
-    }
+    // Column letters
+    'ABCDEFGHIJK'.split('').forEach((l,i) =>
+        svg += T(mx(i), OY-12, l, SM + 'fill:#9CA3AF;'));
+    // Row numbers
+    for (let r = 1; r <= 16; r++)
+        svg += T(OX-4, my(r-1)+5, String(r), SM + 'fill:#9CA3AF;', 'end');
 
-    // ── Helpers: components ─────────────────────────────────────────────────
-    function rect(x, y, w, h, fill, stroke, sw=1.5, rx=2) {
-        return `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" rx="${rx}"/>`;
-    }
-    function text(x, y, t, style='', anchor='middle') {
-        return `<text x="${x}" y="${y}" text-anchor="${anchor}" style="${style}">${t}</text>`;
-    }
-    function line(x1, y1, x2, y2, color, sw=1.5, dash='') {
-        return `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${color}" stroke-width="${sw}" ${dash ? `stroke-dasharray="${dash}"` : ''}/>`;
-    }
-    function dot(x, y, color) { return `<circle cx="${x}" cy="${y}" r="3.5" fill="${color}"/>` }
-
-    // Solar panel symbol
-    function pvPanel(x, y, w=28, h=22) {
-        return rect(x - w/2, y - h/2, w, h, '#EFF6FF', DC, 1.2)
-             + line(x - w/2, y, x + w/2, y, DC, 0.8)
-             + line(x, y - h/2, x, y + h/2, DC, 0.8)
-             + `<text x="${x}" y="${y + h/2 + 9}" text-anchor="middle" style="font-size:7px;font-family:Arial;fill:${DC};">${c.mod.power_wc}Wc</text>`;
-    }
-    // PV diode symbol (triangle + line)
-    function diode(x, y) {
-        const s = 7;
-        return `<polygon points="${x},${y-s} ${x-s},${y+s} ${x+s},${y+s}" fill="${DC}" stroke="${DC}" stroke-width="1"/>`
-             + line(x - s, y + s, x + s, y + s, DC, 1.5);
-    }
-    // Fuse symbol
-    function fuse(x, y, label, rot=0) {
-        const g = rot ? `transform="rotate(${rot},${x},${y})"` : '';
-        return `<g ${g}>`
-             + rect(x-8, y-5, 16, 10, '#FFFBEB', '#D97706', 1.5, 1)
-             + line(x-14, y, x-8, y, '#D97706', 1.5)
-             + line(x+8, y, x+14, y, '#D97706', 1.5)
-             + `<text x="${x}" y="${y + 16}" text-anchor="middle" style="font-size:8px;font-family:Arial;fill:#92400E;">Fusible</text>`
-             + `<text x="${x}" y="${y + 25}" text-anchor="middle" style="font-size:8px;font-family:Arial;fill:#92400E;">${label}</text>`
-             + `</g>`;
-    }
-    // Circuit breaker symbol
-    function breaker(x, y, label) {
-        return rect(x-8, y-8, 16, 16, '#EFF6FF', AC, 1.5, 2)
-             + line(x, y-14, x, y-8, AC, 1.5)
-             + line(x, y+8, x, y+14, AC, 1.5)
-             + line(x-5, y-8, x+5, y+8, AC, 1.5)
-             + `<text x="${x}" y="${y + 24}" text-anchor="middle" style="font-size:8px;font-family:Arial;fill:#1E40AF;">C ${label}</text>`;
-    }
-    // Surge arrester / parafoudre
-    function surge(x, y, label) {
-        return `<g>`
-             + rect(x-16, y-12, 32, 24, '#FFF7ED', '#C2410C', 1.5, 3)
-             + `<text x="${x}" y="${y + 3}" text-anchor="middle" style="font-size:7px;font-family:Arial;fill:#C2410C;font-weight:700;">SPD</text>`
-             + `<text x="${x}" y="${y + 14}" text-anchor="middle" style="font-size:7px;font-family:Arial;fill:#92400E;">${label}</text>`
-             + `</g>`;
-    }
-    // Battery symbol
-    function battery(x, y, label1, label2) {
-        let s = ``;
-        s += rect(x-32, y-22, 64, 44, '#F0FDF4', '#16A34A', 2, 3);
-        // Battery cells (3 vertical lines with short)
-        for (let i = -1; i <= 1; i++) {
-            const px = x + i * 14;
-            s += line(px, y-10, px, y+10, '#16A34A', i===0?2:1);
-        }
-        s += `<text x="${x}" y="${y + 30}" text-anchor="middle" style="font-size:7.5px;font-family:Arial;fill:#166534;font-weight:600;">${label1}</text>`;
-        s += `<text x="${x}" y="${y + 39}" text-anchor="middle" style="font-size:7px;font-family:Arial;fill:#166534;">${label2}</text>`;
-        return s;
-    }
-    // Inverter box (big)
-    function inverterBox(x, y, w, h, brand, model, power) {
-        let s = rect(x, y, w, h, '#EFF6FF', AC, 2.5, 4);
-        // DC symbol inside left
-        s += `<text x="${x + 18}" y="${y + h/2 - 8}" text-anchor="middle" style="font-size:11px;font-family:Arial;fill:${DC};font-weight:700;">= DC</text>`;
-        // Arrow in center
-        const ax = x + w/2, ay = y + h/2;
-        s += `<line x1="${ax - 15}" y1="${ay + 10}" x2="${ax + 15}" y2="${ay - 10}" stroke="${AC}" stroke-width="2"/>`;
-        // AC symbol inside right
-        s += `<text x="${x + w - 24}" y="${y + h/2 + 18}" text-anchor="middle" style="font-size:11px;font-family:Arial;fill:${AC};font-weight:700;">AC ~</text>`;
-        // Label
-        s += `<text x="${x + w + 8}" y="${y + 14}" text-anchor="start" style="font-size:11px;font-family:Arial;fill:${AC};font-weight:700;">ONDULEUR ${brand.toUpperCase()}</text>`;
-        s += `<text x="${x + w + 8}" y="${y + 28}" text-anchor="start" style="font-size:11px;font-family:Arial;fill:${AC};font-weight:700;">${model}</text>`;
-        s += `<text x="${x + w + 8}" y="${y + 42}" text-anchor="start" style="font-size:9px;font-family:Arial;fill:#374151;">${power} kW · ${c.inv.phase || 'Monophasé'}</text>`;
-        return s;
-    }
-    // Contactor / switch
-    function contactor(x, y, label) {
-        return `<g>`
-             + rect(x-10, y-10, 20, 20, '#F3F4F6', '#374151', 1.5, 2)
-             + `<text x="${x}" y="${y + 4}" text-anchor="middle" style="font-size:8px;font-family:Arial;fill:#374151;font-weight:700;">⏻</text>`
-             + line(x, y-16, x, y-10, '#374151', 1.5)
-             + line(x, y+10, x, y+16, '#374151', 1.5)
-             + `<text x="${x}" y="${y + 30}" text-anchor="middle" style="font-size:8px;font-family:Arial;fill:#374151;">${label}</text>`
-             + `</g>`;
-    }
-    // Transfer switch / ATS
-    function transferSwitch(x, y, label) {
-        return `<g>`
-             + rect(x-12, y-12, 24, 24, '#FFFBEB', '#D97706', 1.5, 2)
-             + `<text x="${x}" y="${y - 2}" text-anchor="middle" style="font-size:7px;font-family:Arial;fill:#92400E;font-weight:700;">ATS</text>`
-             + `<text x="${x}" y="${y + 9}" text-anchor="middle" style="font-size:7px;font-family:Arial;fill:#92400E;">${label}</text>`
-             + line(x, y-18, x, y-12, '#D97706', 1.5)
-             + line(x, y+12, x, y+18, '#D97706', 1.5)
-             + `</g>`;
-    }
-    // GRID box
-    function gridBox(x, y) {
-        return rect(x-28, y-14, 56, 28, '#FFF7ED', GRID_C, 2.5, 4)
-             + `<text x="${x}" y="${y + 5}" text-anchor="middle" style="font-size:14px;font-family:Arial;fill:${GRID_C};font-weight:700;">GRID</text>`;
-    }
-    // Loads box
-    function loadsBox(x, y, items) {
-        const lh = 14, pad = 8;
-        const h = items.length * lh + pad * 2;
-        let s = rect(x-55, y, 110, h, '#F9FAFB', '#374151', 1.5, 3);
-        s += `<text x="${x}" y="${y + pad + 10}" text-anchor="middle" style="font-size:9px;font-family:Arial;fill:#111827;font-weight:700;">Loads</text>`;
-        items.forEach((item, i) => {
-            s += `<text x="${x - 50}" y="${y + pad + 10 + (i+1)*lh}" text-anchor="start" style="font-size:7.5px;font-family:Arial;fill:#374151;">${item}</text>`;
-        });
-        return s;
-    }
-
-    // ── Layout positions ────────────────────────────────────────────────────
-    // PV strings: rows 1-4, cols as per stringCols
-    // DC bus: row 5-6, col C-D area
-    // Inverter: rows 6-8, cols D-F
-    // Battery: rows 9-13, col B-C
-    // AC side: rows 8-11, col F
-    // Grid: rows 7-8, cols J-K
-    // Loads: rows 11-14, cols G-H
-
-    const invX = mx(3), invY = cy(5.5);
-    const invW = CW * 2.5, invH = RH * 2.2;
-
-    // ── PV strings (rows 1-4) ───────────────────────────────────────────────
-    const panelRows = Math.min(c.nSeries, 6); // show max 6 panels per string
-    stringCols.forEach((col, si) => {
-        const px = mx(col);
-        // 2 panels shown per string (symbolic)
-        pvPanel(px, my(0.8));
-        pvPanel(px, my(2.3));
-        if (c.nSeries > 2) {
-            svg += `<text x="${px}" y="${my(1.5) + 4}" text-anchor="middle" style="font-size:8px;font-family:Arial;fill:${DC};">↕ ${c.nSeries} mod.</text>`;
-        }
-        // String wires down
-        svg += line(px, my(3.2), px, cy(4.5), DC, 1.5);
-        // Diode
-        svg += diode(px, cy(4.5) + 8);
-        svg += line(px, cy(4.5) + 22, px, cy(5.0), DC, 1.5);
-        // String label
-        svg += text(px, cy(0.1), `String ${si + 1}`, LBLSM);
-    });
-
-    // ── DC bus junction ─────────────────────────────────────────────────────
-    const busX1 = mx(stringCols[0]), busX2 = mx(stringCols[ns-1]);
-    const busY = cy(5.0);
-    svg += line(busX1, busY, busX2, busY, DC, 2.5); // DC bus bar
-    if (ns > 1) svg += dot((busX1 + busX2)/2, busY, DC);
-
-    // DC fuses (between bus bar and parafoudre)
-    stringCols.forEach((col) => {
-        const px = mx(col);
-        svg += line(px, busY, px, busY + 18, DC, 1.5);
-        svg += fuse(px, busY + 36, `${c.stringFuse}A`);
-    });
-
-    // Merge to single DC wire going to inverter
-    const dcMergeX = mx(stringCols[Math.floor(ns/2)]); // center column
-    const fuseBottomY = busY + 60;
-    // Horizontal merge line
-    if (ns > 1) svg += line(busX1, fuseBottomY, busX2, fuseBottomY, DC, 1.5);
-    // Vertical to parafoudre
-    const paraX = mx(2), paraY = my(5.5);
-    svg += line(dcMergeX, fuseBottomY, paraX, fuseBottomY, DC, 1.5);
-    svg += line(paraX, fuseBottomY, paraX, paraY, DC, 1.5);
-
-    // Parafoudre DC
-    svg += surge(paraX, paraY, `1000V/20KA`);
-    svg += line(paraX, paraY + 12, paraX, invY + invH/2, DC, 1.5);
-    svg += line(paraX, invY + invH/2, invX, invY + invH/2, DC, 1.5);
-    svg += dot(invX, invY + invH/2, DC);
-    svg += text(paraX - 30, paraY + 26, 'Parafoudre DC', `font-size:7.5px;font-family:Arial;fill:#C2410C;`, 'start');
-
-    // ── Inverter ─────────────────────────────────────────────────────────────
-    svg += inverterBox(invX, invY, invW, invH, c.iBrand || 'Onduleur', c.iModel || '', c.invPow);
-
-    // DC input wire (top of inverter)
-    svg += dot(invX, invY + invH/2, DC);
-
-    // ── Battery side ─────────────────────────────────────────────────────────
-    const batX = mx(1.5), batSwitchY = my(9), batY = my(11.5);
-    if (c.hasBat) {
-        // Wire from inverter bottom-left to battery
-        const invBatPortX = invX, invBatPortY = invY + invH;
-        svg += line(invBatPortX, invBatPortY, invBatPortX, my(8.5), '#16A34A', 1.5);
-        svg += line(invBatPortX, my(8.5), batX, my(8.5), '#16A34A', 1.5);
-        svg += line(batX, my(8.5), batX, batSwitchY - 16, '#16A34A', 1.5);
-        // Battery switch
-        svg += contactor(batX, batSwitchY, `${c.batSwitch}A`);
-        svg += line(batX, batSwitchY + 16, batX, batY - 22, '#16A34A', 1.5);
-        // Battery pack
-        svg += battery(batX, batY,
-            `Pack ${c.bQty} Batt. ${c.bat?.chemistry || 'LiFePO4'}`,
-            `${c.batVoltage}V / ${c.batAh}Ah`
-        );
-        svg += text(batX, batY + 52, `${c.batCapKwh} kWh utilisables`, LBLSM);
-    }
-
-    // ── AC side ──────────────────────────────────────────────────────────────
-    const acOutX = invX + invW, acOutY = invY + invH * 0.6;
-    const acFuseX = acOutX, acFuseY = acOutY;
-    const atsX = mx(5.5), atsY = my(8.5);
-    const loadX = mx(7), loadY = my(9);
-
-    // AC output from inverter
-    svg += line(acOutX, acOutY, acOutX + 14, acOutY, AC, 1.5);
-    svg += text(acOutX - 2, acOutY - 8, 'Sortie AC', `font-size:7.5px;font-family:Arial;fill:${AC};`);
-
-    // AC fuse (125A)
-    svg += fuse(acOutX + 28, acOutY, `${c.acBreaker}A`);
-    svg += line(acOutX + 42, acOutY, atsX - 12, acOutY, AC, 1.5);
-
-    // ATS / transfer switch
-    svg += transferSwitch(atsX, atsY, `${c.atsBreaker}A`);
-
-    // Loads label
-    svg += text(atsX + 50, my(8.5), 'Loads', `font-size:15px;font-family:Arial;fill:${AC};font-weight:700;`);
-    // Loads items
-    const loadItems = (window.applianceRows || []).slice(0, 6).map(r => `${r.name} (${r.qty > 1 ? r.qty + '×' : ''}${r.power}W)`);
-    if (loadItems.length === 0) loadItems.push('Charges électriques');
-    svg += loadsBox(atsX + 80, my(8.9), loadItems);
-
-    // Wire to loads box
-    svg += line(atsX + 12, atsY, atsX + 55, atsY, AC, 1.5);
-    // Down from ATS to loads
-    svg += line(atsX, atsY + 18, atsX, atsY + 32, AC, 1.5);
-
-    // ── Grid connection ───────────────────────────────────────────────────────
-    if (c.isGrid) {
-        const gridX = mx(9), gridY = my(7);
-        svg += gridBox(gridX, gridY);
-        // Wire from grid to ATS (via breaker)
-        const gridBrkX = mx(8.5), gridBrkY = my(8.5);
-        svg += line(gridX, gridY + 14, gridX, gridBrkY, GRID_C, 1.5);
-        svg += line(gridX, gridBrkY, gridBrkX + 10, gridBrkY, AC, 1.5);
-        svg += breaker(gridBrkX, gridBrkY, c.gridBreaker);
-        svg += text(gridX - 28, gridBrkY + 16, 'Entrée AC', `font-size:7.5px;font-family:Arial;fill:${AC};`);
-        svg += line(gridBrkX - 10, gridBrkY, atsX + 12, gridBrkY, AC, 1.5);
-        svg += dot(atsX + 12, gridBrkY, AC);
-        svg += line(atsX + 12, gridBrkY, atsX + 12, atsY + 12, AC, 1.5);
-    }
-
-    // ── PE (Protective Earth) ─────────────────────────────────────────────────
-    svg += text(mx(1), my(13), 'PE', `font-size:14px;font-family:Arial;fill:${PE};font-weight:700;`);
-    svg += line(mx(1), my(13) - 10, mx(1), my(13) + 10, PE, 1.5);
+    // ── PE bus (green dashed left column) ─────────────────────────────────────
+    const peX = mx(1);
+    svg += L(peX, cy(0), peX, cy(14), PE, 1.5, '5,3');
+    svg += T(peX, cy(13)+22, 'PE', `font-family:Arial;font-size:14px;fill:${PE};font-weight:700;`);
     // Earth symbol
-    const ex = mx(1), ey = my(13) + 22;
-    svg += line(ex - 14, ey, ex + 14, ey, PE, 2);
-    svg += line(ex - 9, ey + 5, ex + 9, ey + 5, PE, 2);
-    svg += line(ex - 4, ey + 10, ex + 4, ey + 10, PE, 2);
-    // PE dotted bus (left side)
-    svg += line(mx(1), my(1), mx(1), my(13), PE, 1, '5,3');
+    [0,6,12].forEach((d,i) => svg += L(peX-(12-i*3), cy(13)+22+d, peX+(12-i*3), cy(13)+22+d, PE, 2-i*0.5));
 
-    // ── Title block (bottom) ──────────────────────────────────────────────────
-    const tY = H - 38;
-    svg += rect(10, tY, W - 20, 36, '#F9FAFB', BORDER, 1, 0);
-    svg += line(160, tY, 160, tY + 36, BORDER, 0.7);
-    svg += line(W - 180, tY, W - 180, tY + 36, BORDER, 0.7);
-    svg += line(W - 80, tY, W - 80, tY + 36, BORDER, 0.7);
-    svg += line(10, tY + 18, W - 20, tY + 18, BORDER, 0.5);
+    // ── Panel info (top-left, col B) ──────────────────────────────────────────
+    const infoX = cx(strCols[0]) - 6;
+    svg += T(infoX, cy(1)+14, `${c.panelBrand} ${c.mod.power_wc} Wc`, SM + `fill:${DC};font-weight:700;`, 'end');
+    svg += T(infoX, cy(1)+26, `${ns} string${ns>1?'s':''} de ${c.nSeries} panneaux`, SM + `fill:${DC};`, 'end');
 
-    svg += text(85, tY + 12, c.company, LBLMD);
-    svg += text(85, tY + 28, c.location, LBLSM);
+    // ── Dashed box around all strings ─────────────────────────────────────────
+    const strBoxL = cx(strCols[0])-8, strBoxR = cx(strCols[ns-1])+CW+8;
+    svg += R(strBoxL, cy(0)+4, strBoxR-strBoxL, cy(4)-cy(0)-4, 'none', BORD, 0.8)
+           .replace('stroke-width="0.8"', 'stroke-width="0.8" stroke-dasharray="5,3"');
 
-    const descTitle = `Système solaire ${c.installType === 'autonome' ? 'autonome' : c.installType === 'hybride' ? 'hybride' : ''} avec stockage${c.isGrid ? ' + réseau' : ''}`;
-    svg += text((160 + W - 180)/2, tY + 12, descTitle, LBLMD);
-    svg += text((160 + W - 180)/2, tY + 28, `P.PV : ${c.peakKwc} kWc${c.hasBat ? ` · Bat: ${c.batCapKwh} kWh` : ''} · P.Ond: ${c.invPow} kW`, LBLSM);
+    // ── PV strings (rows 0-3) ─────────────────────────────────────────────────
+    strCols.forEach((col, si) => {
+        const px = mx(col);
+        // Top panel (row 1)
+        svg += pvSymbol(px, my(0.9));
+        // Number inside top panel
+        svg += T(px+10, my(0.9)+14, String(si+1), SM + 'fill:#374151;');
+        // Wire & diode between panels
+        svg += L(px, my(0.9)+16, px, my(0.9)+26, DC, 1.5);
+        svg += diode(px, my(0.9)+34);
+        svg += L(px, my(0.9)+42, px, my(2.1)-16, DC, 1.5);
+        // Bottom panel (row 2)
+        svg += pvSymbol(px, my(2.1));
+        svg += T(px+10, my(2.1)+14, String(c.nSeries), SM + 'fill:#374151;');
+        // Wire down from string
+        svg += L(px, my(2.1)+16, px, cy(3.8), DC, 1.5);
+    });
+
+    // ── DC wiring per string: parafoudre/fusible (row 4-5) ────────────────────
+    const dcBusY = cy(4.2);
+    const pfSharedX = mx(2.5);
+
+    if (!c.hasBat) {
+        // Grid-tied: PF DC per string (page 1 style)
+        strCols.forEach((col) => {
+            const px = mx(col);
+            svg += parafoudre(px, cy(3.8)+16, true);
+        });
+        // Horizontal bus after parafoudres
+        svg += L(mx(strCols[0]), cy(4.8), mx(strCols[ns-1]), cy(4.8), DC, 2);
+        strCols.forEach(col => svg += DOT(mx(col), cy(4.8), DC));
+        // Fusibles per pair into DC bus
+        const midX = mx(strCols[Math.floor((ns-1)/2)]);
+        svg += fuseV(midX, cy(5.2), `${c.stringFuse}A`);
+        svg += L(mx(strCols[0]), cy(4.8), mx(strCols[0]), cy(5.2)-22, DC, 1.5);
+        if (ns > 1) {
+            const midX2 = mx(strCols[Math.ceil((ns-1)/2)]);
+            svg += fuseV(midX2, cy(5.2), `${c.stringFuse}A`);
+        }
+    } else {
+        // Autonome: fuse per string, shared parafoudre (page 2 style)
+        strCols.forEach(col => {
+            const px = mx(col);
+            svg += fuseV(px, cy(3.8)+16, `${c.stringFuse}A`);
+        });
+        // Horizontal DC bus line connecting strings
+        svg += L(mx(strCols[0]), dcBusY, mx(strCols[ns-1]), dcBusY, DC, 2);
+        strCols.forEach(col => svg += DOT(mx(col), dcBusY, DC));
+        // Shared parafoudre
+        svg += L(mx(strCols[0]), dcBusY, pfSharedX, dcBusY, DC, 1.5);
+        svg += parafoudre(pfSharedX, dcBusY+36, false);
+    }
+
+    // ── Inverter box (rows 6-8, cols C-E area) ────────────────────────────────
+    const invL = cx(2)+4, invT = cy(5.8)+2;
+    const invW2 = CW * 2.8, invH2 = RH * 2.1;
+    svg += inverterBox(invL, invT, invW2, invH2);
+
+    // Inverter label (right of box, col F-G)
+    const ilx = invL + invW2 + 10;
+    const brand = (c.iBrand || 'ONDULEUR').toUpperCase();
+    const model = c.iModel || `${c.batVoltage}/${(c.invPow*1000).toFixed(0)}`;
+    svg += T(ilx, invT+16, `ONDULEUR ${brand}`, LG + `fill:${AC};`, 'start');
+    svg += T(ilx, invT+34, model, LG + `fill:${AC};`, 'start');
+    svg += T(ilx, invT+50, `${c.invPow} kW · ${c.inv?.phase || 'Monophasé'}`, SM + 'fill:#374151;font-size:9px;', 'start');
+
+    // ── Wire: DC bus → inverter DC input ──────────────────────────────────────
+    const dcInY = invT + invH2 * 0.45;
+    if (c.hasBat) {
+        svg += L(pfSharedX, dcBusY + 72, pfSharedX, dcInY, DC, 1.5);
+        svg += L(pfSharedX, dcInY, invL, dcInY, DC, 1.5);
+        svg += DOT(invL, dcInY, DC);
+    } else {
+        const midStr = mx(strCols[Math.floor((ns-1)/2)]);
+        svg += L(midStr, cy(5.2)+22, midStr, dcInY, DC, 1.5);
+        svg += L(midStr, dcInY, invL, dcInY, DC, 1.5);
+        svg += DOT(invL, dcInY, DC);
+    }
+
+    // ── Battery side (col B-C, rows 8-13) ────────────────────────────────────
+    const batColX = mx(1.8);
+    const invBotY = invT + invH2;
+    if (c.hasBat) {
+        // Wire from inverter bottom-left
+        svg += L(invL, invBotY, invL, my(8.5), '#166534', 1.5);
+        svg += L(invL, my(8.5), batColX, my(8.5), '#166634', 1.5);
+        svg += L(batColX, my(8.5), batColX, my(8.8)-20, '#166634', 1.5);
+        // Fusible AC
+        svg += acFuseV(batColX, my(8.8), `${c.acBreaker}A`);
+        svg += T(batColX-12, my(8.8)+30, 'Fusible', SM + `fill:${AC};`, 'end');
+        svg += T(batColX-12, my(8.8)+42, `${c.acBreaker} A`, SM + `fill:${AC};font-weight:700;`, 'end');
+        svg += L(batColX, my(8.8)+22, batColX, my(9.5)-20, '#166634', 1.5);
+        // Batterie switch
+        svg += batSwitch(batColX, my(9.5), `${c.batSwitch} A`);
+        svg += L(batColX, my(9.5)+20, batColX, cy(10.5), '#166634', 1.5);
+        // Battery pack
+        const bp = batPack(batColX-42, cy(10.5), 88, 78, [
+            'Pack de',
+            `**${c.bQty} Batt. Lithium**`,
+            `**${c.bat?.model?.replace('UHOME','') || 'LiFePO4'}**`,
+            `${c.batVoltage}V / ${c.batAh} AH`,
+        ]);
+        svg += bp;
+        svg += L(batColX, cy(10.5), batColX, cy(10.5)+2, '#166634', 1.5);
+    }
+
+    // ── AC output (col E-F, row 8+) ──────────────────────────────────────────
+    const acPortX = invL + invW2 * 0.68;
+    const acPortY = invT + invH2;
+    // Sortie AC label + wire
+    svg += T(acPortX+8, acPortY+8, 'Sortie AC', SM + `fill:${AC};`, 'start');
+    svg += L(acPortX, acPortY, acPortX, my(9.0)-26, AC, 1.5);
+    svg += T(acPortX+8, my(9.0)-24, '1', SM, 'start');
+
+    // AC breaker (C 125 or C 40 depending on power)
+    const acBrkY = my(9.0);
+    svg += breakerV(acPortX, acBrkY, `${c.acBreaker} 4P`, AC);
+    svg += T(acPortX-16, acBrkY+42, 'Arrivée solaire', SM + `fill:${AC};`, 'end');
+
+    // Junction point where grid meets AC output
+    const jctX = acPortX, jctY = my(10.2);
+    svg += L(acPortX, acBrkY+38, jctX, jctY, AC, 1.5);
+
+    if (c.isGrid) {
+        svg += DOT(jctX, jctY, AC);
+        svg += T(jctX+8, jctY-4, 'Injection Point', SM + 'fill:#374151;', 'start');
+    }
+
+    // Inverseur
+    const invSwY = my(11.0);
+    svg += L(jctX, jctY, jctX, invSwY-26, AC, 1.5);
+    svg += inverseur(jctX, invSwY, `${c.atsBreaker} A`);
+
+    // Loads
+    svg += L(jctX, invSwY+26, jctX, my(12.8), AC, 1.5);
+    svg += T(jctX+20, my(12.8)+10, 'Loads', `font-family:Arial;font-size:18px;fill:${AC};font-weight:700;`, 'start');
+
+    // Loads list box
+    const loadItems = (window.applianceRows || []).slice(0,7).map(r =>
+        `${r.qty > 1 ? r.qty+'× ' : ''}${r.name}`);
+    if (loadItems.length === 0) loadItems.push('Charges électriques');
+    svg += loadsListBox(jctX+90, my(11.8), loadItems);
+
+    // ── Grid connection (cols I-K, row 7-9) ──────────────────────────────────
+    if (c.isGrid) {
+        const gx = mx(9.5), gy = my(6.5);
+        svg += gridBox(gx, gy);
+        // Wire down from grid
+        svg += L(gx, gy+18, gx, my(8.5), GRC, 1.5);
+        svg += L(gx, my(8.5), mx(8.5), my(8.5), AC, 1.5);
+        // Grid AC breaker
+        const gbX = mx(8.5), gbY = my(9.0);
+        svg += L(gbX, my(8.5), gbX, gbY-28, AC, 1.5);
+        svg += breakerV(gbX, gbY, `${c.gridBreaker} 4P`, AC);
+        svg += T(gbX+16, gbY-24, 'Entrée AC', SM + `fill:${AC};`, 'start');
+        svg += T(gbX+16, gbY+42, 'Arrivée réseau', SM + `fill:${AC};`, 'start');
+        // Wire from grid breaker to junction
+        svg += L(gbX, gbY+38, gbX, jctY, AC, 1.5);
+        svg += L(gbX, jctY, jctX+4, jctY, AC, 1.5);
+    }
+
+    // ── Title block (bottom, matching reference exactly) ──────────────────────
+    const tY = H - 40;
+    svg += R(OX, tY, W-OX*2, 38, '#F9FAFB', BORD, 1, 0);
+    const div1 = OX + 145, div2 = W - 210, div3 = W - 100, div4 = W - 46;
+    [div1, div2, div3, div4].forEach(x => svg += L(x, tY, x, tY+38, '#9CA3AF', 0.7));
+    svg += L(OX, tY+19, W-OX, tY+19, '#D1D5DB', 0.5);
+
+    svg += T(OX+73, tY+13, c.company, MD + 'font-weight:700;fill:#111827;');
+    svg += T(OX+73, tY+30, c.location, SM + 'fill:#374151;');
+
+    const typeStr = c.installType === 'autonome' ? 'autonome avec stockage'
+                  : c.installType === 'hybride'  ? 'hybride avec stockage + réseau'
+                  :                                'autoconsommation';
+    svg += T((div1+div2)/2, tY+13, `Système solaire ${typeStr} ${c.client}`, MD + 'font-weight:700;fill:#111827;');
+    svg += T((div1+div2)/2, tY+30,
+        `P. PV : ${c.peakKwc} KWc${c.hasBat ? ` ; Capacité batteries : ${c.batCapKwh} KWh` : ''} ; P. Ond: ${c.invPow} KW`,
+        SM + 'fill:#374151;');
 
     const today = new Date().toLocaleDateString('fr-FR');
-    svg += text(W - 130, tY + 12, `Dessiné le : ${today}`, LBLSM);
-    svg += text(W - 130, tY + 28, `Par : ${c.client || c.company}`, LBLSM);
-    svg += text(W - 45, tY + 20, '01', `font-size:11px;font-family:Arial;fill:#374151;font-weight:700;`);
-
-    // ── Info label top-left ───────────────────────────────────────────────────
-    svg += text(mx(1), my(0.3),
-        `${c.panelBrand} ${c.mod.power_wc} Wc`,
-        `font-size:10px;font-family:Arial;fill:${DC};font-weight:700;`, 'start');
-    svg += text(mx(1), my(0.3) + 13,
-        `${c.nStrings} string${c.nStrings > 1 ? 's' : ''} de ${c.nSeries} panneaux`,
-        `font-size:9px;font-family:Arial;fill:${DC};`, 'start');
+    svg += T(div2+8, tY+10, 'Dessiné le :', SM + 'fill:#374151;', 'start');
+    svg += T(div2+8, tY+27, 'Par :', SM + 'fill:#374151;', 'start');
+    svg += T(div3-4, tY+13, today, MD + 'font-weight:700;fill:#111827;', 'end');
+    svg += T(div3-4, tY+30, c.client || c.company, MD + 'fill:#111827;', 'end');
+    svg += T((div3+div4)/2, tY+22, '01', LG + 'fill:#374151;');
 
     // ── Outer border ──────────────────────────────────────────────────────────
-    svg += rect(10, 32, W - 20, H - 70, 'none', BORDER, 1.5, 0);
+    svg += R(OX, OY-8, W-OX*2, H-OY-22, 'none', BORD, 1.5, 0);
 
     svg += `</svg>`;
     return svg;
