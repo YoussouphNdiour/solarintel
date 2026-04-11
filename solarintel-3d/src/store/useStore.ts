@@ -262,26 +262,23 @@ export const useStore = create<AppState>((set, get) => ({
 
   setRoofType: (type) =>
     set((s) => {
-      const patch: Partial<AppState> = {
-        roofType: type,
-        selectedRoofFaces: new Set<number>([0]),
-      }
+      const faceReset = { selectedRoofFaces: new Set<number>([0]) }
       if (s.selectedZoneId) {
+        // zones mode: only update the selected zone, leave global roofType untouched
         return {
-          ...patch,
+          ...faceReset,
           zones: s.zones.map((z) =>
             z.id === s.selectedZoneId ? { ...z, roofType: type } : z
           ),
         }
       }
-      return patch
+      return { roofType: type, ...faceReset }
     }),
 
   setPitch: (pitch) => {
     const { selectedZoneId, zones, azimuth } = get()
     if (selectedZoneId) {
       set({
-        pitch,
         zones: zones.map((z) =>
           z.id === selectedZoneId ? { ...z, pitch } : z
         ),
@@ -296,7 +293,6 @@ export const useStore = create<AppState>((set, get) => ({
     const { selectedZoneId, zones, pitch } = get()
     if (selectedZoneId) {
       set({
-        azimuth,
         zones: zones.map((z) =>
           z.id === selectedZoneId ? { ...z, azimuth } : z
         ),
@@ -307,7 +303,18 @@ export const useStore = create<AppState>((set, get) => ({
     window.parent.postMessage({ type: 'TILT_AZIMUTH', tilt: pitch, azimuth }, '*')
   },
 
-  setWallHeight: (wallHeight) => set({ wallHeight }),
+  setWallHeight: (wallHeight) => {
+    const { selectedZoneId, zones } = get()
+    if (selectedZoneId) {
+      set({
+        zones: zones.map((z) =>
+          z.id === selectedZoneId ? { ...z, wallHeight } : z
+        ),
+      })
+    } else {
+      set({ wallHeight })
+    }
+  },
 
   setRoofMaterial: (roofMaterial) => set({ roofMaterial }),
 

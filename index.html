@@ -1948,6 +1948,14 @@ function suggestStringConfig() {
         spInput.dataset.autoFilled = 'true';
     }
 
+    // Persist DC chain config so schema can read it without DOM
+    _state.dcChain = {
+        nSeries: n_optimal,
+        nStrings: n_parallel,
+        voc_string_cold: +(n_optimal * voc_at_tmin).toFixed(1),
+        vmpp_string_hot:  +(n_optimal * vmpp_at_tmax).toFixed(1),
+    };
+
     const limitBy = n_max_voc <= n_max_mppt ? 'Voc(Tmin)' : 'MPPT(Tmax)';
     hint.classList.remove('hidden');
     hint.innerHTML = `
@@ -3149,6 +3157,7 @@ function generateCalpinage() {
     });
 
     if (totalPanels > 0) suggestEquipment(totalPanels);
+    if (totalPanels > 0) suggestStringConfig();
     if (_view3dReady && _state.zones.length > 0) _send3DInit();
 }
 
@@ -4286,15 +4295,22 @@ function _getSchemaConfig() {
     const bModel        = document.getElementById('batteryModel')?.value  || '';
     const bQty          = +(document.getElementById('batteryQty')?.value  || 1);
     const invQty        = +(document.getElementById('inverterQty')?.value || 1);
-    const nSeries       = +(document.getElementById('modulesInSeries')?.value || 10);
-    const nStrings      = +(document.getElementById('stringsParallel')?.value || 1);
-    const panelCount    = STATE.panelCount || (nSeries * nStrings);
+    const _dc = _state.dcChain || {};
+    const nSeries       = +(document.getElementById('modulesInSeries')?.value || _dc.nSeries || 10);
+    const nStrings      = +(document.getElementById('stringsParallel')?.value || _dc.nStrings || 1);
+    // Sum across all zones if available, else fall back to STATE.panelCount or estimate
+    const _zonePanelSum = (_state.zones && _state.zones.length > 0)
+        ? _state.zones.reduce(function(s, z) { return s + (z.panelCount || 0); }, 0)
+        : 0;
+    const panelCount = _zonePanelSum > 0 ? _zonePanelSum
+        : (STATE.panelCount || (nSeries * nStrings));
     const installType   = _state.installType || 'autoconsommation';
     const company       = document.getElementById('companyName')?.value || 'SolarIntel';
     const client        = document.getElementById('clientName')?.value  || '';
-    const location      = _state.zones?.[0]?.centroid
-                        ? `Lat ${_state.zones[0].centroid.latitude?.toFixed(4)}, Lon ${_state.zones[0].centroid.longitude?.toFixed(4)}`
-                        : 'Sénégal';
+    const _locZone = (_state.zones || []).find(function(z) { return z && z.centroid; });
+    const location = _locZone
+        ? `Lat ${_locZone.centroid.latitude?.toFixed(4)}, Lon ${_locZone.centroid.longitude?.toFixed(4)}`
+        : 'Sénégal';
 
     const mod = Object.values(MODULE_CATALOG).flat().find(m => m.model === panelModelVal)
              || { power_wc: STATE.panelPower || 545, voc: 49, vmp: 41, isc: 14 };

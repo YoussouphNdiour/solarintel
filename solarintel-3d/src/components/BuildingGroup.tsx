@@ -1,5 +1,4 @@
 import { useMemo } from 'react'
-import { useStore } from '../store/useStore'
 import { polygonToLocal, defaultPolygon } from '../utils/geo'
 import Building from './Building'
 import Roof from './Roof'
@@ -15,14 +14,12 @@ interface Props {
 }
 
 export default function BuildingGroup({ zone, offsetX, offsetZ, isSelected, onClick }: Props) {
-  const { roofType: globalRoofType, pitch: globalPitch, azimuth: globalAzimuth,
-          wallHeight: globalWallHeight } = useStore()
-
-  // Utilise la config de la zone si definie, sinon fallback global
-  const roofType  = zone.roofType  ?? globalRoofType
-  const pitch     = zone.pitch     ?? globalPitch
-  const azimuth   = zone.azimuth   ?? globalAzimuth
-  const wallHeight = zone.wallHeight ?? globalWallHeight
+  // Use only zone-local values with sensible defaults — never fall back to global
+  // (global state mutations from other zones must not bleed here)
+  const roofType   = zone.roofType   ?? null
+  const pitch      = zone.pitch      ?? 15
+  const azimuth    = zone.azimuth    ?? 180
+  const wallHeight = zone.wallHeight ?? 3
 
   const localPoly = useMemo(
     () => zone.polygon ? polygonToLocal(zone.polygon) : defaultPolygon(),
