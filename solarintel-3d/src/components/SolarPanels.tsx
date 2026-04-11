@@ -131,13 +131,16 @@ export default function SolarPanels({ localPoly, roofType, pitch, azimuth, wallH
       return face.geometry.boundingBox!
     })
 
-    // Precompute face XZ polygons for precise containment (handles trapezoids + triangles)
+    // Precompute face XZ polygons for precise containment.
+    // For polygon-clipped faces (buildRoofFromPolygon) use the stored polygonXZ boundary.
+    // For legacy bbox faces, extract unique vertices from the buffer geometry.
     const facePolysXZ = faces.map((face): [number, number][] => {
+      if (face.polygonXZ && face.polygonXZ.length >= 3) return face.polygonXZ
+      // Legacy: quad stored as 2 triangles → 6 verts, unique at slots 0,1,2,5
       const arr = face.geometry.attributes.position.array as Float32Array
       if (arr.length === 9) {
         return [[arr[0], arr[2]], [arr[3], arr[5]], [arr[6], arr[8]]]
       }
-      // Quad stored as 2 triangles: [v0,v1,v2, v0,v2,v3] → unique verts at slots 0,1,2,5
       return [[arr[0], arr[2]], [arr[3], arr[5]], [arr[6], arr[8]], [arr[15], arr[17]]]
     })
 

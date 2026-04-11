@@ -30,19 +30,10 @@ export default function Roof({ localPoly, roofType, pitch, azimuth, wallHeight }
   const isMetallic = roofMaterial === 'zinc' || roofMaterial === 'bac-acier'
   const isMultiFace = roofType === 'gable' || roofType === 'hip'
 
-  // All pitched roofs use polygon-clipped geometry
+  // All roof types use polygon-clipped geometry (flat included)
   const faces = useMemo(() => {
     if (localPoly.points.length < 3) return []
     const { bbox, points } = localPoly
-
-    if (roofType === 'flat') {
-      // Flat: simple polygon shape at Y=0 (parent group adds wallHeight)
-      const shape = new THREE.Shape(points.map(([x, y]) => new THREE.Vector2(x, -y)))
-      const geo = new THREE.ShapeGeometry(shape)
-      geo.rotateX(-Math.PI / 2)
-      return [{ geometry: geo, normal: new THREE.Vector3(0, 1, 0), tiltDeg: 0, azimuthDeg: 180 }]
-    }
-
     return buildRoofFromPolygon(
       points,
       roofType,

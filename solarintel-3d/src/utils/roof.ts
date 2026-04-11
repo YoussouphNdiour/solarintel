@@ -4,9 +4,11 @@ import { pointInPolygon } from './geo'
 
 export interface RoofFace {
   geometry: THREE.BufferGeometry
-  normal: THREE.Vector3   // world-space normal of the face
-  tiltDeg: number         // tilt angle in degrees from horizontal
-  azimuthDeg: number      // azimuth of the down-slope direction
+  normal: THREE.Vector3        // world-space normal of the face
+  tiltDeg: number              // tilt angle in degrees from horizontal
+  azimuthDeg: number           // azimuth of the down-slope direction
+  /** XZ boundary polygon of this face (used for panel containment checks) */
+  polygonXZ?: [number, number][]
 }
 
 export interface RoofConfig {
@@ -328,6 +330,21 @@ export function buildRoofFromPolygon(
     return [u * cb - v * sb, u * sb + v * cb]
   }
 
+  // ── FLAT ──────────────────────────────────────────────────────────────────
+  if (type === 'flat') {
+    const geo = makeShapeGeo(points)
+    if (!geo) return []
+    // No Y displacement — flat at Y=0 (parent group at wallHeight)
+    geo.computeBoundingBox()
+    return [{
+      geometry: geo,
+      normal: new THREE.Vector3(0, 1, 0),
+      tiltDeg: 0,
+      azimuthDeg: 180,
+      polygonXZ: points,
+    }]
+  }
+
   // ── SHED ──────────────────────────────────────────────────────────────────
   if (type === 'shed') {
     const getY = (_u: number, v: number) => Math.max(0, rise * (v + hh))
@@ -340,13 +357,13 @@ export function buildRoofFromPolygon(
       normal: new THREE.Vector3(snx, cosP, snz),
       tiltDeg: pitch,
       azimuthDeg: azimuth,
+      polygonXZ: points,
     }]
   }
 
   // ── GABLE ─────────────────────────────────────────────────────────────────
   if (type === 'gable') {
     const bboxPts = points.map(([x, z]) => toBbox(x, z) as [number, number])
-    // Y height: symmetric from ridge (v=0) to eaves (v=±hh)
     const getY = (_u: number, v: number) => Math.max(0, rise * (hh - Math.abs(v)))
 
     const faceDefs: { keep: [number, number, number][], nSign: number }[] = [
@@ -368,6 +385,7 @@ export function buildRoofFromPolygon(
         normal: new THREE.Vector3(gnx, cosP, gnz),
         tiltDeg: pitch,
         azimuthDeg: nSign < 0 ? azimuth : (azimuth + 180) % 360,
+        polygonXZ: worldPts,
       }] satisfies RoofFace[]
     })
   }
@@ -379,11 +397,6 @@ export function buildRoofFromPolygon(
     const getY = (u: number, v: number) =>
       Math.max(0, Math.min(rise * (hh - Math.abs(v)), rise * (hw - Math.abs(u)), ridgeH))
 
-    // Clip conditions for 4 faces using diamond decomposition:
-    // Front (v<0, dominates v direction): v≤0, -hh*u - hw*v ≥ 0, hh*u - hw*v ≥ 0
-    // Back  (v>0, dominates v direction): v≥0, -hh*u + hw*v ≥ 0, hh*u + hw*v ≥ 0
-    // Left  (u<0, dominates u direction): u≤0, -hw*u - hh*v ≥ 0, -hw*u + hh*v ≥ 0
-    // Right (u>0, dominates u direction): u≥0,  hw*u - hh*v ≥ 0,  hw*u + hh*v ≥ 0
     const faceDefs: { clips: [number, number, number][], norm: THREE.Vector3, az: number }[] = [
       {
         clips: [[0,-1,0], [-hh,-hw,0], [hh,-hw,0]],
@@ -416,7 +429,7 @@ export function buildRoofFromPolygon(
       const geo = makeShapeGeo(worldPts)
       if (!geo) return []
       applyY(geo, getY, toBbox)
-      return [{ geometry: geo, normal: norm, tiltDeg: pitch, azimuthDeg: az }] satisfies RoofFace[]
+      return [{ geometry: geo, normal: norm, tiltDeg: pitch, azimuthDeg: az, polygonXZ: worldPts }] satisfies RoofFace[]
     })
   }
 
