@@ -53,6 +53,9 @@ interface AppState {
   selectedPanel: number | null
   removedPanels: Set<number>
 
+  // Roof face selection (gable: 2 faces, hip: 4 faces)
+  selectedRoofFaces: Set<number>
+
   // UI state
   controlsOpen: boolean
   showStats: boolean
@@ -116,6 +119,9 @@ interface AppState {
   setSelectedPanel: (idx: number | null) => void
   removeSelectedPanel: () => void
   addPanel: () => void
+  toggleRoofFace: (idx: number) => void
+  resetRoofFaces: () => void
+
   toggleControls: () => void
   toggleStats: () => void
   toggleIrradiance: () => void
@@ -175,6 +181,8 @@ export const useStore = create<AppState>((set, get) => ({
   obstacles: [],
   selectedObstacle: null,
   shadingPct: 0,
+
+  selectedRoofFaces: new Set<number>([0]),
 
   selectedPanel: null,
   removedPanels: new Set(),
@@ -254,15 +262,19 @@ export const useStore = create<AppState>((set, get) => ({
 
   setRoofType: (type) =>
     set((s) => {
+      const patch: Partial<AppState> = {
+        roofType: type,
+        selectedRoofFaces: new Set<number>([0]),
+      }
       if (s.selectedZoneId) {
         return {
-          roofType: type,
+          ...patch,
           zones: s.zones.map((z) =>
             z.id === s.selectedZoneId ? { ...z, roofType: type } : z
           ),
         }
       }
-      return { roofType: type }
+      return patch
     }),
 
   setPitch: (pitch) => {
@@ -340,6 +352,20 @@ export const useStore = create<AppState>((set, get) => ({
     set((s) => ({ panelCount: s.panelCount + 1, sceneMode: 'view' }))
     window.parent.postMessage({ type: 'ADD_PANEL' }, '*')
   },
+
+  toggleRoofFace: (idx) =>
+    set((s) => {
+      const next = new Set(s.selectedRoofFaces)
+      if (next.has(idx)) {
+        if (next.size <= 1) return {}  // prevent deselecting last face
+        next.delete(idx)
+      } else {
+        next.add(idx)
+      }
+      return { selectedRoofFaces: next }
+    }),
+
+  resetRoofFaces: () => set({ selectedRoofFaces: new Set<number>([0]) }),
 
   toggleControls: () => set((s) => ({ controlsOpen: !s.controlsOpen })),
 

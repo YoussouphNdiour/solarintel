@@ -4311,20 +4311,58 @@ function _getSchemaConfig() {
     const isGrid = installType !== 'autonome';
     const hasBat = !!bat && bQty > 0;
 
-    // Fuse sizing
-    const stringIsc = mod.isc || 14;
-    const stringFuse = stringIsc <= 14 ? 16 : stringIsc <= 20 ? 25 : 32;
-    const acFuse = Math.ceil(invPow * 1000 / 220 * 1.25 / 5) * 5; // rounded to 5A
+    // ── DC chain electrical values ────────────────────────────────────────────
+    const tMin = parseFloat(document.getElementById('tMinSite')?.value ?? '15');
+    const tMax = parseFloat(document.getElementById('tMaxSite')?.value ?? '70');
+
+    const beta  = (mod.beta_voc  || -0.270) / 100;  // %/°C → fraction/°C
+    const gamma = (mod.gamma_pmax|| -0.350) / 100;
+
+    const voc_mod_cold  = (mod.voc || 49) * (1 + beta  * (tMin - 25));
+    const vmpp_mod_hot  = (mod.vmp || 41) * (1 + gamma * (tMax - 25));
+    const isc_mod       = mod.isc  || 14;
+    const imp_mod       = mod.imp  || 13.2;
+
+    // String voltages & currents
+    const voc_string    = +(voc_mod_cold  * nSeries).toFixed(1);  // worst-case Voc at Tmin (for protection)
+    const vmpp_string   = +(vmpp_mod_hot  * nSeries).toFixed(1);  // worst-case Vmpp at Tmax
+    const vmpp_string_stc = +(( mod.vmp || 41) * nSeries).toFixed(1);  // STC
+    const isc_string    = +isc_mod.toFixed(1);
+    const imp_string    = +imp_mod.toFixed(1);
+    const isc_total     = +(isc_string * nStrings).toFixed(1);   // total DC Isc
+
+    // Fuse sizing: 1.25 × Isc, next standard value (IEC 60269)
+    const stringIsc = isc_string;
+    const fuseCandidates = [6, 10, 16, 20, 25, 32, 40, 50, 63];
+    const minFuse = stringIsc * 1.25;
+    const stringFuse = fuseCandidates.find(f => f >= minFuse) || 25;
+
+    // Cable DC section (indicative): I = Imp_string, section ≥ I/3.5
+    const dcCableSection = [1.5,2.5,4,6,10,16].find(s => s * 3.5 >= imp_string) || 6;
+
+    // AC side
+    const acFuse = Math.ceil(invPow * 1000 / 220 * 1.25 / 5) * 5;
     const acBreaker = Math.min(125, Math.ceil(acFuse / 10) * 10);
-    const atsBreaker = 63;
+    const atsBreaker = Math.min(63, Math.ceil(invPow * 1000 / 380 * 1.25 / 5) * 5) || 63;
     const gridBreaker = 40;
     const batSwitch = hasBat ? Math.min(400, Math.ceil(batCapKwh * 1000 / batVoltage / 50) * 50) : 0;
+
+    // MPPT check
+    const mpptOk = inv.mppt_vmin && inv.mppt_vmax
+        ? (vmpp_string >= inv.mppt_vmin && voc_string <= inv.voc_max)
+        : null;
 
     return {
         panelBrand, panelModelVal, iBrand, iModel, bModel, bQty, invQty,
         nSeries, nStrings, panelCount, installType, company, client, location,
         mod, inv, bat, peakKwc, batCapKwh, batAh, batVoltage, invPow,
-        isGrid, hasBat, stringFuse, acFuse, acBreaker, atsBreaker, gridBreaker, batSwitch,
+        isGrid, hasBat,
+        // DC chain electrical
+        voc_string, vmpp_string, vmpp_string_stc, isc_string, imp_string, isc_total,
+        stringFuse, dcCableSection,
+        // AC side
+        acFuse, acBreaker, atsBreaker, gridBreaker, batSwitch,
+        mpptOk,
     };
 }
 
@@ -4556,8 +4594,18 @@ function _buildSchemaSVG(c) {
 
     // ── Panel info (top-left, col B) ──────────────────────────────────────────
     const infoX = cx(strCols[0]) - 6;
-    svg += T(infoX, cy(1)+14, `${c.panelBrand} ${c.mod.power_wc} Wc`, SM + `fill:${DC};font-weight:700;`, 'end');
-    svg += T(infoX, cy(1)+26, `${ns} string${ns>1?'s':''} de ${c.nSeries} panneaux`, SM + `fill:${DC};`, 'end');
+    svg += T(infoX, cy(1)+12, `${c.panelBrand} ${c.mod.power_wc} Wc`, SM + `fill:${DC};font-weight:700;`, 'end');
+    svg += T(infoX, cy(1)+24, `${ns} string${ns>1?'s':''} de ${c.nSeries} panneaux`, SM + `fill:${DC};`, 'end');
+    // DC electrical summary
+    svg += T(infoX, cy(1)+36, `Voc str. : ${c.voc_string} V`, SM + `fill:${DC};`, 'end');
+    svg += T(infoX, cy(1)+48, `Vmpp str. : ${c.vmpp_string_stc} V`, SM + `fill:${DC};`, 'end');
+    svg += T(infoX, cy(1)+60, `Isc str. : ${c.isc_string} A`, SM + `fill:${DC};`, 'end');
+    // MPPT compatibility badge
+    if (c.mpptOk !== null) {
+        const mpptColor = c.mpptOk ? '#16A34A' : '#DC2626';
+        svg += R(infoX-80, cy(1)+66, 80, 14, c.mpptOk?'#F0FDF4':'#FEF2F2', mpptColor, 1, 2);
+        svg += T(infoX-40, cy(1)+76, c.mpptOk ? '✓ MPPT OK' : '⚠ MPPT KO', SM + `fill:${mpptColor};font-weight:700;`);
+    }
 
     // ── Dashed box around all strings ─────────────────────────────────────────
     const strBoxL = cx(strCols[0])-8, strBoxR = cx(strCols[ns-1])+CW+8;
@@ -4569,15 +4617,17 @@ function _buildSchemaSVG(c) {
         const px = mx(col);
         // Top panel (row 1)
         svg += pvSymbol(px, my(0.9));
-        // Number inside top panel
-        svg += T(px+10, my(0.9)+14, String(si+1), SM + 'fill:#374151;');
+        // String number + module count
+        svg += T(px+10, my(0.9)+12, String(si+1), SM + `fill:${DC};font-weight:700;`);
         // Wire & diode between panels
         svg += L(px, my(0.9)+16, px, my(0.9)+26, DC, 1.5);
         svg += diode(px, my(0.9)+34);
         svg += L(px, my(0.9)+42, px, my(2.1)-16, DC, 1.5);
         // Bottom panel (row 2)
         svg += pvSymbol(px, my(2.1));
-        svg += T(px+10, my(2.1)+14, String(c.nSeries), SM + 'fill:#374151;');
+        svg += T(px+10, my(2.1)+12, `×${c.nSeries}`, SM + `fill:${DC};font-weight:700;`);
+        // String voltage annotation on wire
+        svg += T(px+8, my(2.1)+30, `${c.vmpp_string_stc}V`, SM + `fill:${DC};font-size:7px;`, 'start');
         // Wire down from string
         svg += L(px, my(2.1)+16, px, cy(3.8), DC, 1.5);
     });
@@ -4627,8 +4677,16 @@ function _buildSchemaSVG(c) {
     const brand = (c.iBrand || 'ONDULEUR').toUpperCase();
     const model = c.iModel || `${c.batVoltage}/${(c.invPow*1000).toFixed(0)}`;
     svg += T(ilx, invT+16, `ONDULEUR ${brand}`, LG + `fill:${AC};`, 'start');
-    svg += T(ilx, invT+34, model, LG + `fill:${AC};`, 'start');
-    svg += T(ilx, invT+50, `${c.invPow} kW · ${c.inv?.phase || 'Monophasé'}`, SM + 'fill:#374151;font-size:9px;', 'start');
+    svg += T(ilx, invT+32, model, LG + `fill:${AC};`, 'start');
+    svg += T(ilx, invT+47, `${c.invPow} kW · ${c.inv?.phase || 'Monophasé'}`, SM + 'fill:#374151;font-size:9px;', 'start');
+    // MPPT range annotation
+    if (c.inv?.mppt_vmin && c.inv?.mppt_vmax) {
+        svg += T(ilx, invT+60, `MPPT : ${c.inv.mppt_vmin}–${c.inv.mppt_vmax} V`, SM + `fill:${AC};font-size:8px;`, 'start');
+        svg += T(ilx, invT+72, `Voc max : ${c.inv.voc_max || '—'} V`, SM + `fill:${AC};font-size:8px;`, 'start');
+        svg += T(ilx, invT+84, `Idc max : ${c.inv.idc_max || '—'} A (total DC = ${c.isc_total} A)`, SM + `fill:${AC};font-size:8px;`, 'start');
+    }
+    // Cable section DC annotation
+    svg += T(ilx, invT+97, `Câble DC : ${c.dcCableSection} mm²`, SM + 'fill:#374151;font-size:8px;', 'start');
 
     // ── Wire: DC bus → inverter DC input ──────────────────────────────────────
     const dcInY = invT + invH2 * 0.45;

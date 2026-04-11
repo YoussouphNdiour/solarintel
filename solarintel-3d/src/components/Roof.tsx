@@ -1,16 +1,20 @@
 import { useMemo } from 'react'
 import * as THREE from 'three'
+import { ThreeEvent } from '@react-three/fiber'
 import { LocalPolygon, RoofType, RoofMaterial } from '../types'
-import { buildRoofGeometry } from '../utils/roof'
+import { buildRoofFromPolygon } from '../utils/roof'
 import { useStore } from '../store/useStore'
 
-const MATERIAL_COLORS: Record<RoofMaterial, [string, string]> = {
-  'tuile-rouge':  ['#8B3A2A', '#7A2E20'],
-  'tuile-grise':  ['#2D3D52', '#263244'],
-  'zinc':         ['#5B6E7A', '#4E6070'],
-  'bac-acier':    ['#374151', '#2D3748'],
-  'beton':        ['#6B7280', '#5A6170'],
+const MATERIAL_COLORS: Record<RoofMaterial, string[]> = {
+  'tuile-rouge':  ['#8B3A2A', '#7A2E20', '#7A2E20', '#8B3A2A'],
+  'tuile-grise':  ['#2D3D52', '#263244', '#263244', '#2D3D52'],
+  'zinc':         ['#5B6E7A', '#4E6070', '#4E6070', '#5B6E7A'],
+  'bac-acier':    ['#374151', '#2D3748', '#2D3748', '#374151'],
+  'beton':        ['#6B7280', '#5A6170', '#5A6170', '#6B7280'],
 }
+
+// Highlight color for selected face (slightly lighter/tinted)
+const FACE_SELECTED_COLOR = '#3B5070'
 
 interface Props {
   localPoly: LocalPolygon
@@ -21,62 +25,65 @@ interface Props {
 }
 
 export default function Roof({ localPoly, roofType, pitch, azimuth, wallHeight }: Props) {
-  const { roofMaterial } = useStore()
-  const [c0, c1] = MATERIAL_COLORS[roofMaterial] ?? MATERIAL_COLORS['tuile-grise']
+  const { roofMaterial, selectedRoofFaces, toggleRoofFace } = useStore()
+  const colors = MATERIAL_COLORS[roofMaterial] ?? MATERIAL_COLORS['tuile-grise']
   const isMetallic = roofMaterial === 'zinc' || roofMaterial === 'bac-acier'
+  const isMultiFace = roofType === 'gable' || roofType === 'hip'
 
-  // Flat roof: use actual polygon shape so it doesn't extend beyond the drawn zone
-  const flatGeo = useMemo(() => {
-    if (roofType !== 'flat' || localPoly.points.length < 3) return null
-    // Negate Y so after rotateX(-π/2) world Z = +North (same as Building.tsx fix)
-    const shape = new THREE.Shape(localPoly.points.map(([x, y]) => new THREE.Vector2(x, -y)))
-    const geo = new THREE.ShapeGeometry(shape)
-    geo.rotateX(-Math.PI / 2)
-    return geo
-  }, [localPoly, roofType])
-
-  // Tilted roofs: bbox-based geometry
+  // All pitched roofs use polygon-clipped geometry
   const faces = useMemo(() => {
-    if (roofType === 'flat') return []
-    const { bbox } = localPoly
-    return buildRoofGeometry({
-      type: roofType,
+    if (localPoly.points.length < 3) return []
+    const { bbox, points } = localPoly
+
+    if (roofType === 'flat') {
+      // Flat: simple polygon shape at Y=0 (parent group adds wallHeight)
+      const shape = new THREE.Shape(points.map(([x, y]) => new THREE.Vector2(x, -y)))
+      const geo = new THREE.ShapeGeometry(shape)
+      geo.rotateX(-Math.PI / 2)
+      return [{ geometry: geo, normal: new THREE.Vector3(0, 1, 0), tiltDeg: 0, azimuthDeg: 180 }]
+    }
+
+    return buildRoofFromPolygon(
+      points,
+      roofType,
       pitch,
       azimuth,
-      wallHeight,
-      bboxW: Math.max(bbox.w, 1),
-      bboxH: Math.max(bbox.h, 1),
-      bboxAngle: bbox.angle,
-    })
-  }, [localPoly, roofType, pitch, azimuth, wallHeight])
-
-  if (roofType === 'flat' && flatGeo) {
-    return (
-      <group position={[0, wallHeight, 0]}>
-        <mesh geometry={flatGeo} castShadow receiveShadow>
-          <meshStandardMaterial
-            color={c0}
-            roughness={isMetallic ? 0.3 : 0.85}
-            metalness={isMetallic ? 0.6 : 0.05}
-            side={THREE.DoubleSide}
-          />
-        </mesh>
-      </group>
+      bbox.angle,
+      Math.max(bbox.w, 1),
+      Math.max(bbox.h, 1),
     )
+  }, [localPoly, roofType, pitch, azimuth])
+
+  function handleFaceClick(e: ThreeEvent<MouseEvent>, idx: number) {
+    e.stopPropagation()
+    if (isMultiFace) toggleRoofFace(idx)
   }
 
   return (
     <group position={[0, wallHeight, 0]}>
-      {faces.map((face, i) => (
-        <mesh key={i} geometry={face.geometry} castShadow receiveShadow>
-          <meshStandardMaterial
-            color={i === 0 ? c0 : c1}
-            roughness={isMetallic ? 0.3 : 0.85}
-            metalness={isMetallic ? 0.6 : 0.05}
-            side={THREE.DoubleSide}
-          />
-        </mesh>
-      ))}
+      {faces.map((face, i) => {
+        const isSelected = selectedRoofFaces.has(i)
+        const baseColor = colors[i % colors.length] ?? colors[0]
+        const color = isMultiFace && isSelected ? FACE_SELECTED_COLOR : baseColor
+        return (
+          <mesh
+            key={i}
+            geometry={face.geometry}
+            castShadow
+            receiveShadow
+            onClick={(e) => handleFaceClick(e, i)}
+          >
+            <meshStandardMaterial
+              color={color}
+              roughness={isMetallic ? 0.3 : 0.85}
+              metalness={isMetallic ? 0.6 : 0.05}
+              side={THREE.DoubleSide}
+              emissive={isMultiFace && isSelected ? new THREE.Color('#0EA5E9') : undefined}
+              emissiveIntensity={isMultiFace && isSelected ? 0.12 : 0}
+            />
+          </mesh>
+        )
+      })}
     </group>
   )
 }

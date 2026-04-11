@@ -77,6 +77,7 @@ export default function ControlsPanel() {
     shadingPct,
     takeScreenshot,
     zones, selectedZoneId, selectZone,
+    selectedRoofFaces, toggleRoofFace,
   } = useStore()
 
   const SPECIFIC_YIELD = 1700
@@ -249,6 +250,34 @@ export default function ControlsPanel() {
                   ))}
                 </div>
               </div>
+
+              {/* Face selector — shown for gable (2 faces) and hip (4 faces) */}
+              {(roofType === 'gable' || roofType === 'hip') && (() => {
+                const faceLabels = roofType === 'gable'
+                  ? [{ label: 'Avant', idx: 0 }, { label: 'Arrière', idx: 1 }]
+                  : [{ label: 'S', idx: 0 }, { label: 'N', idx: 1 }, { label: 'O', idx: 2 }, { label: 'E', idx: 3 }]
+                return (
+                  <div className="space-y-1.5">
+                    <div className="text-[#94A3B8] text-xs">Pans actifs (panneaux)</div>
+                    <div className={`grid gap-1 ${roofType === 'gable' ? 'grid-cols-2' : 'grid-cols-4'}`}>
+                      {faceLabels.map(({ label, idx }) => (
+                        <button
+                          key={idx}
+                          onClick={() => toggleRoofFace(idx)}
+                          className={`py-1.5 px-1 rounded text-[10px] font-medium transition-all ${
+                            selectedRoofFaces.has(idx)
+                              ? 'bg-[#0EA5E9] text-white'
+                              : 'bg-[#0F172A] text-[#64748B] hover:text-white border border-[#334155] hover:border-[#0EA5E9]'
+                          }`}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                    <p className="text-[#475569] text-[9px]">Cliquez aussi sur un pan dans la vue 3D</p>
+                  </div>
+                )
+              })()}
 
               <Slider label="Inclinaison" value={pitch} min={0} max={45} unit="°" onChange={setPitch} />
               {/* Azimuth quick-presets */}

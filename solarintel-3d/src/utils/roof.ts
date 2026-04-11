@@ -241,6 +241,188 @@ function buildHipRoof(w: number, h: number, angle: number, rise: number, pitchDe
   ]
 }
 
+// ─── Sutherland-Hodgman polygon clip ─────────────────────────────────────────
+// Keeps the half-plane where a*x + b*z + c >= 0 (polygon coords are [x, z]).
+function clipPoly(poly: [number, number][], a: number, b: number, c: number): [number, number][] {
+  const out: [number, number][] = []
+  const n = poly.length
+  for (let i = 0; i < n; i++) {
+    const [cx, cz] = poly[i]
+    const [nx, nz] = poly[(i + 1) % n]
+    const dc = a * cx + b * cz + c
+    const dn = a * nx + b * nz + c
+    if (dc >= 0) out.push([cx, cz])
+    if ((dc >= 0) !== (dn >= 0)) {
+      const t = dc / (dc - dn)
+      out.push([cx + t * (nx - cx), cz + t * (nz - cz)])
+    }
+  }
+  return out
+}
+
+// Build a ShapeGeometry (flat XZ) from local polygon points [x, z].
+function makeShapeGeo(pts: [number, number][]): THREE.BufferGeometry | null {
+  if (pts.length < 3) return null
+  const shape = new THREE.Shape(pts.map(([x, z]) => new THREE.Vector2(x, -z)))
+  const geo = new THREE.ShapeGeometry(shape)
+  geo.rotateX(-Math.PI / 2)
+  return geo
+}
+
+// Apply Y displacement to each vertex of a flat XZ geometry.
+// toBbox maps world (x, z) → bbox-aligned (u, v) for slope computation.
+function applyY(
+  geo: THREE.BufferGeometry,
+  getY: (u: number, v: number) => number,
+  toBbox: (x: number, z: number) => [number, number]
+): void {
+  const arr = geo.attributes.position.array as Float32Array
+  for (let i = 0; i < arr.length; i += 3) {
+    const [u, v] = toBbox(arr[i], arr[i + 2])
+    arr[i + 1] = getY(u, v)
+  }
+  ;(geo.attributes.position as THREE.BufferAttribute).needsUpdate = true
+  geo.computeVertexNormals()
+  geo.computeBoundingBox()
+}
+
+/**
+ * Build polygon-clipped roof geometry from actual building footprint.
+ * Returns faces whose geometry is clipped to the exact polygon shape —
+ * no bbox-rectangle overflow.
+ *
+ * @param points   Local XZ polygon points (from polygonToLocal)
+ * @param type     Roof type
+ * @param pitch    Pitch angle (degrees)
+ * @param azimuth  Roof azimuth (degrees)
+ * @param bboxAngle Bbox principal-axis angle (radians)
+ * @param bboxW    Bbox width  (meters)
+ * @param bboxH    Bbox height (meters)
+ */
+export function buildRoofFromPolygon(
+  points: [number, number][],
+  type: RoofType,
+  pitch: number,
+  azimuth: number,
+  bboxAngle: number,
+  bboxW: number,
+  bboxH: number,
+): RoofFace[] {
+  if (points.length < 3) return []
+
+  const pitchRad = (pitch * Math.PI) / 180
+  const rise = Math.tan(pitchRad)
+  const hw = bboxW / 2
+  const hh = bboxH / 2
+  const cosP = Math.cos(pitchRad)
+  const sinP = Math.sin(pitchRad)
+
+  // Transform world (x, z) → bbox-aligned (u, v)
+  const ca = Math.cos(-bboxAngle), sa = Math.sin(-bboxAngle)
+  function toBbox(x: number, z: number): [number, number] {
+    return [x * ca - z * sa, x * sa + z * ca]
+  }
+  // Transform bbox (u, v) → world (x, z)
+  const cb = Math.cos(bboxAngle), sb = Math.sin(bboxAngle)
+  function toWorld(u: number, v: number): [number, number] {
+    return [u * cb - v * sb, u * sb + v * cb]
+  }
+
+  // ── SHED ──────────────────────────────────────────────────────────────────
+  if (type === 'shed') {
+    const getY = (_u: number, v: number) => Math.max(0, rise * (v + hh))
+    const geo = makeShapeGeo(points)
+    if (!geo) return []
+    applyY(geo, getY, toBbox)
+    const [snx, snz] = rotateXZ(0, -sinP, bboxAngle)
+    return [{
+      geometry: geo,
+      normal: new THREE.Vector3(snx, cosP, snz),
+      tiltDeg: pitch,
+      azimuthDeg: azimuth,
+    }]
+  }
+
+  // ── GABLE ─────────────────────────────────────────────────────────────────
+  if (type === 'gable') {
+    const bboxPts = points.map(([x, z]) => toBbox(x, z) as [number, number])
+    // Y height: symmetric from ridge (v=0) to eaves (v=±hh)
+    const getY = (_u: number, v: number) => Math.max(0, rise * (hh - Math.abs(v)))
+
+    const faceDefs: { keep: [number, number, number][], nSign: number }[] = [
+      { keep: [[0, -1, 0]],  nSign: -1 },  // front: v ≤ 0
+      { keep: [[0,  1, 0]],  nSign:  1 },  // back:  v ≥ 0
+    ]
+
+    return faceDefs.flatMap(({ keep, nSign }) => {
+      let clipped = bboxPts
+      for (const [a, b, c] of keep) clipped = clipPoly(clipped, a, b, c)
+      if (clipped.length < 3) return []
+      const worldPts = clipped.map(([u, v]) => toWorld(u, v) as [number, number])
+      const geo = makeShapeGeo(worldPts)
+      if (!geo) return []
+      applyY(geo, getY, toBbox)
+      const [gnx, gnz] = rotateXZ(0, nSign * sinP, bboxAngle)
+      return [{
+        geometry: geo,
+        normal: new THREE.Vector3(gnx, cosP, gnz),
+        tiltDeg: pitch,
+        azimuthDeg: nSign < 0 ? azimuth : (azimuth + 180) % 360,
+      }] satisfies RoofFace[]
+    })
+  }
+
+  // ── HIP ───────────────────────────────────────────────────────────────────
+  if (type === 'hip') {
+    const bboxPts = points.map(([x, z]) => toBbox(x, z) as [number, number])
+    const ridgeH = rise * hh
+    const getY = (u: number, v: number) =>
+      Math.max(0, Math.min(rise * (hh - Math.abs(v)), rise * (hw - Math.abs(u)), ridgeH))
+
+    // Clip conditions for 4 faces using diamond decomposition:
+    // Front (v<0, dominates v direction): v≤0, -hh*u - hw*v ≥ 0, hh*u - hw*v ≥ 0
+    // Back  (v>0, dominates v direction): v≥0, -hh*u + hw*v ≥ 0, hh*u + hw*v ≥ 0
+    // Left  (u<0, dominates u direction): u≤0, -hw*u - hh*v ≥ 0, -hw*u + hh*v ≥ 0
+    // Right (u>0, dominates u direction): u≥0,  hw*u - hh*v ≥ 0,  hw*u + hh*v ≥ 0
+    const faceDefs: { clips: [number, number, number][], norm: THREE.Vector3, az: number }[] = [
+      {
+        clips: [[0,-1,0], [-hh,-hw,0], [hh,-hw,0]],
+        norm: new THREE.Vector3(...rotateXZ(0, -sinP, bboxAngle) as [number, number], 0)
+          .set(rotateXZ(0, -sinP, bboxAngle)[0], cosP, rotateXZ(0, -sinP, bboxAngle)[1]),
+        az: azimuth,
+      },
+      {
+        clips: [[0,1,0], [-hh,hw,0], [hh,hw,0]],
+        norm: new THREE.Vector3(rotateXZ(0, sinP, bboxAngle)[0], cosP, rotateXZ(0, sinP, bboxAngle)[1]),
+        az: (azimuth + 180) % 360,
+      },
+      {
+        clips: [[-1,0,0], [-hw,-hh,0], [-hw,hh,0]],
+        norm: new THREE.Vector3(rotateXZ(-sinP, 0, bboxAngle)[0], cosP, rotateXZ(-sinP, 0, bboxAngle)[1]),
+        az: (azimuth + 270) % 360,
+      },
+      {
+        clips: [[1,0,0], [hw,-hh,0], [hw,hh,0]],
+        norm: new THREE.Vector3(rotateXZ(sinP, 0, bboxAngle)[0], cosP, rotateXZ(sinP, 0, bboxAngle)[1]),
+        az: (azimuth + 90) % 360,
+      },
+    ]
+
+    return faceDefs.flatMap(({ clips, norm, az }) => {
+      let clipped = bboxPts
+      for (const [a, b, c] of clips) clipped = clipPoly(clipped, a, b, c)
+      if (clipped.length < 3) return []
+      const worldPts = clipped.map(([u, v]) => toWorld(u, v) as [number, number])
+      const geo = makeShapeGeo(worldPts)
+      if (!geo) return []
+      applyY(geo, getY, toBbox)
+      return [{ geometry: geo, normal: norm, tiltDeg: pitch, azimuthDeg: az }] satisfies RoofFace[]
+    })
+  }
+
+  return []
+}
+
 /**
  * Generate panel grid positions on a roof face.
  * Returns array of { x, y, z, tilt, azimuth } in local 3D coords.

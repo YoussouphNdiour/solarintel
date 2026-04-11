@@ -2,7 +2,7 @@ import { useMemo, useRef, useEffect } from 'react'
 import * as THREE from 'three'
 import { ThreeEvent } from '@react-three/fiber'
 import { LocalPolygon, RoofType, Obstacle } from '../types'
-import { buildRoofGeometry, RoofFace } from '../utils/roof'
+import { buildRoofGeometry, buildRoofFromPolygon, RoofFace } from '../utils/roof'
 import { useStore } from '../store/useStore'
 import { getSunPosition, sunToDirection } from '../utils/solar'
 import { OBSTACLE_CFG } from './Obstacles'
@@ -92,6 +92,7 @@ export default function SolarPanels({ localPoly, roofType, pitch, azimuth, wallH
     spacingHCm, spacingVCm,
     panelPositions: storePanelPositions,
     holePolygons: storeHolePolygons,
+    selectedRoofFaces,
   } = useStore()
 
   const panelCount = overridePanelCount ?? storePanelCount
@@ -101,12 +102,15 @@ export default function SolarPanels({ localPoly, roofType, pitch, azimuth, wallH
 
   const panels = useMemo<PanelPos[]>(() => {
     const { bbox, points } = localPoly
-    const faces = buildRoofGeometry({
-      type: roofType, pitch, azimuth, wallHeight,
-      bboxW: Math.max(bbox.w, 1),
-      bboxH: Math.max(bbox.h, 1),
-      bboxAngle: bbox.angle,
-    })
+    const isMultiFace = roofType === 'gable' || roofType === 'hip'
+    // Use polygon-clipped geometry so panels stay within actual footprint
+    const allFaces = points.length >= 3
+      ? buildRoofFromPolygon(points, roofType, pitch, azimuth, bbox.angle, Math.max(bbox.w, 1), Math.max(bbox.h, 1))
+      : buildRoofGeometry({ type: roofType, pitch, azimuth, wallHeight, bboxW: Math.max(bbox.w, 1), bboxH: Math.max(bbox.h, 1), bboxAngle: bbox.angle })
+    // For multi-face roofs filter to only the user-selected faces
+    const faces = isMultiFace
+      ? allFaces.filter((_, i) => selectedRoofFaces.has(i))
+      : allFaces
 
     const wM = panelWidthMm / 1000
     const hM = panelHeightMm / 1000
@@ -326,7 +330,7 @@ export default function SolarPanels({ localPoly, roofType, pitch, azimuth, wallH
     }
 
     return result
-  }, [localPoly, roofType, pitch, azimuth, wallHeight, panelCount, panelWidthMm, panelHeightMm, orientation, spacingHCm, spacingVCm, panelPositions, holePolygons])
+  }, [localPoly, roofType, pitch, azimuth, wallHeight, panelCount, panelWidthMm, panelHeightMm, orientation, spacingHCm, spacingVCm, panelPositions, holePolygons, selectedRoofFaces])
 
   const COLOR_REMOVED = new THREE.Color('#0F172A')
   const COLOR_GHOST = new THREE.Color('#22C55E')
