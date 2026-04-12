@@ -117,8 +117,10 @@ export default function SolarPanels({ localPoly, roofType, pitch, azimuth, wallH
     const pW = orientation === 'portrait' ? wM : hM
     const pH = orientation === 'portrait' ? hM : wM
 
-    // Plane constant D = N·P0 using first face vertex in world space (Y + wallHeight)
+    // World Y of panel center on face.
+    // Prefer getLocalY (exact slope formula) over plane-equation approximation.
     function getFaceY(face: RoofFace, x: number, z: number): number {
+      if (face.getLocalY) return wallHeight + face.getLocalY(x, z)
       if (Math.abs(face.normal.y) < 1e-6) return wallHeight
       const arr = face.geometry.attributes.position.array as Float32Array
       const D = face.normal.x * arr[0] + face.normal.y * (arr[1] + wallHeight) + face.normal.z * arr[2]

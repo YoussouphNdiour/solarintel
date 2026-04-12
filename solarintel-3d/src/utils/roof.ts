@@ -9,6 +9,12 @@ export interface RoofFace {
   azimuthDeg: number           // azimuth of the down-slope direction
   /** XZ boundary polygon of this face (used for panel containment checks) */
   polygonXZ?: [number, number][]
+  /**
+   * Returns the LOCAL height (above the eave / above wallHeight) at world XZ position (x, z).
+   * Panel world Y = wallHeight + getLocalY(x, z).
+   * Only set for polygon-clipped faces from buildRoofFromPolygon.
+   */
+  getLocalY?: (x: number, z: number) => number
 }
 
 export interface RoofConfig {
@@ -334,7 +340,6 @@ export function buildRoofFromPolygon(
   if (type === 'flat') {
     const geo = makeShapeGeo(points)
     if (!geo) return []
-    // No Y displacement — flat at Y=0 (parent group at wallHeight)
     geo.computeBoundingBox()
     return [{
       geometry: geo,
@@ -342,15 +347,16 @@ export function buildRoofFromPolygon(
       tiltDeg: 0,
       azimuthDeg: 180,
       polygonXZ: points,
+      getLocalY: () => 0,
     }]
   }
 
   // ── SHED ──────────────────────────────────────────────────────────────────
   if (type === 'shed') {
-    const getY = (_u: number, v: number) => Math.max(0, rise * (v + hh))
+    const shedGetY = (_u: number, v: number) => Math.max(0, rise * (v + hh))
     const geo = makeShapeGeo(points)
     if (!geo) return []
-    applyY(geo, getY, toBbox)
+    applyY(geo, shedGetY, toBbox)
     const [snx, snz] = rotateXZ(0, -sinP, bboxAngle)
     return [{
       geometry: geo,
@@ -358,17 +364,18 @@ export function buildRoofFromPolygon(
       tiltDeg: pitch,
       azimuthDeg: azimuth,
       polygonXZ: points,
+      getLocalY: (x, z) => { const [, v] = toBbox(x, z); return shedGetY(0, v) },
     }]
   }
 
   // ── GABLE ─────────────────────────────────────────────────────────────────
   if (type === 'gable') {
     const bboxPts = points.map(([x, z]) => toBbox(x, z) as [number, number])
-    const getY = (_u: number, v: number) => Math.max(0, rise * (hh - Math.abs(v)))
+    const gableGetY = (_u: number, v: number) => Math.max(0, rise * (hh - Math.abs(v)))
 
     const faceDefs: { keep: [number, number, number][], nSign: number }[] = [
-      { keep: [[0, -1, 0]],  nSign: -1 },  // front: v ≤ 0
-      { keep: [[0,  1, 0]],  nSign:  1 },  // back:  v ≥ 0
+      { keep: [[0, -1, 0]],  nSign: -1 },
+      { keep: [[0,  1, 0]],  nSign:  1 },
     ]
 
     return faceDefs.flatMap(({ keep, nSign }) => {
@@ -378,7 +385,7 @@ export function buildRoofFromPolygon(
       const worldPts = clipped.map(([u, v]) => toWorld(u, v) as [number, number])
       const geo = makeShapeGeo(worldPts)
       if (!geo) return []
-      applyY(geo, getY, toBbox)
+      applyY(geo, gableGetY, toBbox)
       const [gnx, gnz] = rotateXZ(0, nSign * sinP, bboxAngle)
       return [{
         geometry: geo,
@@ -386,6 +393,7 @@ export function buildRoofFromPolygon(
         tiltDeg: pitch,
         azimuthDeg: nSign < 0 ? azimuth : (azimuth + 180) % 360,
         polygonXZ: worldPts,
+        getLocalY: (x, z) => { const [u, v] = toBbox(x, z); return gableGetY(u, v) },
       }] satisfies RoofFace[]
     })
   }
@@ -394,7 +402,7 @@ export function buildRoofFromPolygon(
   if (type === 'hip') {
     const bboxPts = points.map(([x, z]) => toBbox(x, z) as [number, number])
     const ridgeH = rise * hh
-    const getY = (u: number, v: number) =>
+    const hipGetY = (u: number, v: number) =>
       Math.max(0, Math.min(rise * (hh - Math.abs(v)), rise * (hw - Math.abs(u)), ridgeH))
 
     const faceDefs: { clips: [number, number, number][], norm: THREE.Vector3, az: number }[] = [
@@ -428,8 +436,12 @@ export function buildRoofFromPolygon(
       const worldPts = clipped.map(([u, v]) => toWorld(u, v) as [number, number])
       const geo = makeShapeGeo(worldPts)
       if (!geo) return []
-      applyY(geo, getY, toBbox)
-      return [{ geometry: geo, normal: norm, tiltDeg: pitch, azimuthDeg: az, polygonXZ: worldPts }] satisfies RoofFace[]
+      applyY(geo, hipGetY, toBbox)
+      return [{
+        geometry: geo, normal: norm, tiltDeg: pitch, azimuthDeg: az,
+        polygonXZ: worldPts,
+        getLocalY: (x, z) => { const [u, v] = toBbox(x, z); return hipGetY(u, v) },
+      }] satisfies RoofFace[]
     })
   }
 
