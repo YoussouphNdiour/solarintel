@@ -15,6 +15,16 @@ export interface RoofFace {
    * Only set for polygon-clipped faces from buildRoofFromPolygon.
    */
   getLocalY?: (x: number, z: number) => number
+  /**
+   * Horizontal unit vector along the ridge / "column" direction of this face.
+   * Used to build a proper rotation matrix for panel orientation.
+   */
+  faceRight?: THREE.Vector3
+  /**
+   * Unit vector pointing DOWN the slope on this face (from ridge toward eave).
+   * Used for panel grid stepping and rotation matrix.
+   */
+  faceDown?: THREE.Vector3
 }
 
 export interface RoofConfig {
@@ -336,6 +346,9 @@ export function buildRoofFromPolygon(
     return [u * cb - v * sb, u * sb + v * cb]
   }
 
+  // Horizontal unit vector along the ridge (same for all faces of a given bbox rotation)
+  const ridgeDir = new THREE.Vector3(cb, 0, sb)
+
   // ── FLAT ──────────────────────────────────────────────────────────────────
   if (type === 'flat') {
     const geo = makeShapeGeo(points)
@@ -348,16 +361,21 @@ export function buildRoofFromPolygon(
       azimuthDeg: 180,
       polygonXZ: points,
       getLocalY: () => 0,
+      faceRight: new THREE.Vector3(cb, 0, sb),
+      faceDown:  new THREE.Vector3(sb, 0, -cb),
     }]
   }
 
   // ── SHED ──────────────────────────────────────────────────────────────────
   if (type === 'shed') {
+    // Shed slopes from -V (low) to +V (high) in bbox space
+    // Down-slope direction (from high to low) = toward -V = world (sb, -rise, -cb) normalised
     const shedGetY = (_u: number, v: number) => Math.max(0, rise * (v + hh))
     const geo = makeShapeGeo(points)
     if (!geo) return []
     applyY(geo, shedGetY, toBbox)
     const [snx, snz] = rotateXZ(0, -sinP, bboxAngle)
+    const faceDown = new THREE.Vector3(sb * cosP, -sinP, -cb * cosP)
     return [{
       geometry: geo,
       normal: new THREE.Vector3(snx, cosP, snz),
@@ -365,6 +383,8 @@ export function buildRoofFromPolygon(
       azimuthDeg: azimuth,
       polygonXZ: points,
       getLocalY: (x, z) => { const [, v] = toBbox(x, z); return shedGetY(0, v) },
+      faceRight: ridgeDir.clone(),
+      faceDown,
     }]
   }
 
@@ -373,12 +393,19 @@ export function buildRoofFromPolygon(
     const bboxPts = points.map(([x, z]) => toBbox(x, z) as [number, number])
     const gableGetY = (_u: number, v: number) => Math.max(0, rise * (hh - Math.abs(v)))
 
+    // face 0 (front, v≤0): down-slope toward -V → world (sb, -rise, -cb) · cosP normalised
+    // face 1 (back,  v≥0): down-slope toward +V → world (-sb, -rise, cb) · cosP normalised
+    const faceDowns = [
+      new THREE.Vector3( sb * cosP, -sinP, -cb * cosP),  // front
+      new THREE.Vector3(-sb * cosP, -sinP,  cb * cosP),  // back
+    ]
+
     const faceDefs: { keep: [number, number, number][], nSign: number }[] = [
       { keep: [[0, -1, 0]],  nSign: -1 },
       { keep: [[0,  1, 0]],  nSign:  1 },
     ]
 
-    return faceDefs.flatMap(({ keep, nSign }) => {
+    return faceDefs.flatMap(({ keep, nSign }, fi) => {
       let clipped = bboxPts
       for (const [a, b, c] of keep) clipped = clipPoly(clipped, a, b, c)
       if (clipped.length < 3) return []
@@ -394,6 +421,8 @@ export function buildRoofFromPolygon(
         azimuthDeg: nSign < 0 ? azimuth : (azimuth + 180) % 360,
         polygonXZ: worldPts,
         getLocalY: (x, z) => { const [u, v] = toBbox(x, z); return gableGetY(u, v) },
+        faceRight: ridgeDir.clone(),
+        faceDown: faceDowns[fi],
       }] satisfies RoofFace[]
     })
   }
@@ -405,31 +434,54 @@ export function buildRoofFromPolygon(
     const hipGetY = (u: number, v: number) =>
       Math.max(0, Math.min(rise * (hh - Math.abs(v)), rise * (hw - Math.abs(u)), ridgeH))
 
-    const faceDefs: { clips: [number, number, number][], norm: THREE.Vector3, az: number }[] = [
+    // Down-slope vectors per hip face:
+    // front (-V): ( sb*cosP, -sinP, -cb*cosP)
+    // back  (+V): (-sb*cosP, -sinP,  cb*cosP)
+    // left  (-U): (-cb*cosP, -sinP, -sb*cosP)
+    // right (+U): ( cb*cosP, -sinP,  sb*cosP)
+    // faceRight per face:
+    // front/back: ridgeDir = (cb, 0, sb)
+    // left:  (-sb, 0,  cb)
+    // right: ( sb, 0, -cb)
+    const faceDefs: {
+      clips: [number, number, number][]
+      norm: THREE.Vector3
+      az: number
+      faceRight: THREE.Vector3
+      faceDown: THREE.Vector3
+    }[] = [
       {
         clips: [[0,-1,0], [-hh,-hw,0], [hh,-hw,0]],
         norm: new THREE.Vector3(...rotateXZ(0, -sinP, bboxAngle) as [number, number], 0)
           .set(rotateXZ(0, -sinP, bboxAngle)[0], cosP, rotateXZ(0, -sinP, bboxAngle)[1]),
         az: azimuth,
+        faceRight: ridgeDir.clone(),
+        faceDown: new THREE.Vector3( sb * cosP, -sinP, -cb * cosP),
       },
       {
         clips: [[0,1,0], [-hh,hw,0], [hh,hw,0]],
         norm: new THREE.Vector3(rotateXZ(0, sinP, bboxAngle)[0], cosP, rotateXZ(0, sinP, bboxAngle)[1]),
         az: (azimuth + 180) % 360,
+        faceRight: ridgeDir.clone(),
+        faceDown: new THREE.Vector3(-sb * cosP, -sinP,  cb * cosP),
       },
       {
         clips: [[-1,0,0], [-hw,-hh,0], [-hw,hh,0]],
         norm: new THREE.Vector3(rotateXZ(-sinP, 0, bboxAngle)[0], cosP, rotateXZ(-sinP, 0, bboxAngle)[1]),
         az: (azimuth + 270) % 360,
+        faceRight: new THREE.Vector3(-sb, 0,  cb),
+        faceDown: new THREE.Vector3(-cb * cosP, -sinP, -sb * cosP),
       },
       {
         clips: [[1,0,0], [hw,-hh,0], [hw,hh,0]],
         norm: new THREE.Vector3(rotateXZ(sinP, 0, bboxAngle)[0], cosP, rotateXZ(sinP, 0, bboxAngle)[1]),
         az: (azimuth + 90) % 360,
+        faceRight: new THREE.Vector3( sb, 0, -cb),
+        faceDown: new THREE.Vector3( cb * cosP, -sinP,  sb * cosP),
       },
     ]
 
-    return faceDefs.flatMap(({ clips, norm, az }) => {
+    return faceDefs.flatMap(({ clips, norm, az, faceRight, faceDown }) => {
       let clipped = bboxPts
       for (const [a, b, c] of clips) clipped = clipPoly(clipped, a, b, c)
       if (clipped.length < 3) return []
@@ -441,6 +493,8 @@ export function buildRoofFromPolygon(
         geometry: geo, normal: norm, tiltDeg: pitch, azimuthDeg: az,
         polygonXZ: worldPts,
         getLocalY: (x, z) => { const [u, v] = toBbox(x, z); return hipGetY(u, v) },
+        faceRight,
+        faceDown,
       }] satisfies RoofFace[]
     })
   }

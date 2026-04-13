@@ -7,7 +7,7 @@ export default function Compass() {
   const roofAngle = azimuth - 180  // panels face this direction
 
   return (
-    <div className="absolute bottom-4 left-4 z-20 select-none opacity-70 hover:opacity-100 transition-opacity">
+    <div className="absolute bottom-4 left-4 z-20 select-none opacity-70 hover:opacity-100 transition-opacity pointer-events-none">
       <div className="relative w-10 h-10">
         {/* Outer ring */}
         {/* pointer-events-none prevents browser extension SVGAnimatedString className errors */}

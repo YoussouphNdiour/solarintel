@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { Fragment, useEffect, useRef, useState } from 'react'
 import { useStore } from '../store/useStore'
 import { DrawTool } from '../types'
 
@@ -216,33 +216,39 @@ export default function DrawingToolbar() {
               : false
 
           return (
-            <div key={idx} className="relative group">
-              <button
-                onClick={() => setDrawTool(def.tool)}
-                className={`
-                  w-9 h-9 flex items-center justify-center rounded-lg transition-all duration-150
-                  ${highlight
-                    ? 'bg-[#0EA5E9] text-white shadow-md'
-                    : 'text-[#94A3B8] hover:text-white hover:bg-[#334155]'
-                  }
-                `}
-                title={`${def.label} (${def.shortcut})`}
-              >
-                {def.icon}
-              </button>
-              {/* Keyboard badge */}
-              <span className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-[#0F172A] border border-[#475569] text-[#64748B] text-[8px] font-mono flex items-center justify-center rounded pointer-events-none">
-                {def.shortcut}
-              </span>
-              {/* Tooltip */}
-              <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap bg-[#0F172A] text-white text-xs px-2 py-1 rounded shadow-lg border border-[#334155] z-30">
-                {def.label}
+            <Fragment key={idx}>
+              {/* Separator between navigation tools (select, move) and drawing tools */}
+              {idx === 2 && (
+                <div className="w-full h-px bg-[#475569]/50 my-0.5" />
+              )}
+              <div className="relative group">
+                <button
+                  onClick={() => setDrawTool(def.tool)}
+                  className={`
+                    w-9 h-9 flex items-center justify-center rounded-lg transition-all duration-150
+                    ${highlight
+                      ? 'bg-[#0EA5E9] text-white shadow-lg ring-2 ring-[#0EA5E9]/50 ring-offset-1 ring-offset-[#1E293B]'
+                      : 'text-[#94A3B8] hover:text-white hover:bg-[#334155]'
+                    }
+                  `}
+                  title={`${def.label} (${def.shortcut})`}
+                >
+                  {def.icon}
+                </button>
+                {/* Keyboard badge */}
+                <span className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-[#0F172A] border border-[#475569] text-[#64748B] text-[8px] font-mono flex items-center justify-center rounded pointer-events-none">
+                  {def.shortcut}
+                </span>
+                {/* Tooltip */}
+                <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap bg-[#0F172A] text-white text-xs px-2 py-1 rounded shadow-lg border border-[#334155] z-30">
+                  {def.label}
+                </div>
               </div>
-            </div>
+            </Fragment>
           )
         })}
 
-        {/* Separator */}
+        {/* Separator between drawing tools and orbit */}
         <div className="w-full h-px bg-[#334155] my-0.5" />
 
         {/* Orbit button */}
@@ -252,7 +258,7 @@ export default function DrawingToolbar() {
             className={`
               w-9 h-9 flex items-center justify-center rounded-lg transition-all duration-150
               ${drawTool === 'orbit'
-                ? 'bg-[#0EA5E9] text-white shadow-md'
+                ? 'bg-[#0EA5E9] text-white shadow-lg ring-2 ring-[#0EA5E9]/50 ring-offset-1 ring-offset-[#1E293B]'
                 : 'text-[#94A3B8] hover:text-white hover:bg-[#334155]'
               }
             `}

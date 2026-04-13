@@ -67,6 +67,8 @@ interface PanelPos {
   tilt: number
   az: number
   normal: THREE.Vector3
+  faceRight?: THREE.Vector3   // for proper panel quaternion
+  faceDown?:  THREE.Vector3
 }
 
 interface Props {
@@ -252,85 +254,90 @@ export default function SolarPanels({ localPoly, roofType, pitch, azimuth, wallH
           y: hit.y + hit.face.normal.y * PANEL_THICKNESS / 2,
           z: z + hit.face.normal.z * PANEL_THICKNESS / 2,
           tilt: hit.face.tiltDeg, az: hit.face.azimuthDeg, normal: hit.face.normal,
+          faceRight: hit.face.faceRight,
+          faceDown:  hit.face.faceDown,
         })
       }
       return result
     }
 
-    // ── Branch B: grid algorithm (no 2D positions available) ─────────────────
-    const spacingX = spacingHCm / 100
-    const spacingZ = spacingVCm / 100
+    // ── Branch B: face-local grid (no 2D positions available) ────────────────
+    // Grid each face independently in face-local surface coordinates.
+    // faceRight (along ridge) and faceDown (down slope) define the panel rows/cols.
+    // This ensures panels are always axis-aligned with the roof slope regardless of
+    // bbox rotation, and containment is checked in the face's own 2D space.
 
-    const polyXZ: [number, number][] = points.map(([x, y]) => [x, y])
+    const spacingRight = spacingHCm / 100   // gap along ridge
+    const spacingDown  = spacingVCm / 100   // gap along slope
+    const stepRight = pW + spacingRight
+    const stepDown  = pH + spacingDown
+    const maxPool = Math.max(panelCount * 3, panelCount + 80)
+    const result: PanelPos[] = []
 
-    function pointInPoly(px: number, pz: number): boolean {
-      if (polyXZ.length < 3) return true
+    // Point-in-polygon in 2D (reusable)
+    function inPoly2D(px: number, py: number, poly: [number, number][]): boolean {
       let inside = false
-      const n = polyXZ.length
+      const n = poly.length
       for (let i = 0, j = n - 1; i < n; j = i++) {
-        const xi = polyXZ[i][0], yi = polyXZ[i][1]
-        const xj = polyXZ[j][0], yj = polyXZ[j][1]
-        if ((yi > pz) !== (yj > pz) && px < ((xj - xi) * (pz - yi)) / (yj - yi) + xi)
+        const xi = poly[i][0], yi = poly[i][1]
+        const xj = poly[j][0], yj = poly[j][1]
+        if ((yi > py) !== (yj > py) && px < ((xj - xi) * (py - yi) / (yj - yi) + xi))
           inside = !inside
       }
       return inside
     }
 
-    function panelContained(cx: number, cz: number): boolean {
-      const hw = pW / 2, hh = pH / 2
-      return (
-        pointInPoly(cx - hw, cz - hh) &&
-        pointInPoly(cx + hw, cz - hh) &&
-        pointInPoly(cx + hw, cz + hh) &&
-        pointInPoly(cx - hw, cz + hh)
-      )
-    }
-
-    const minX = points.reduce((m, p) => Math.min(m, p[0]), Infinity)
-    const maxX = points.reduce((m, p) => Math.max(m, p[0]), -Infinity)
-    const minZ = points.reduce((m, p) => Math.min(m, p[1]), Infinity)
-    const maxZ = points.reduce((m, p) => Math.max(m, p[1]), -Infinity)
-
-    const stepX = pW + spacingX
-    const stepZ = pH + spacingZ
-    const maxPool = Math.max(panelCount * 3, panelCount + 80)
-    const result: PanelPos[] = []
-
-    const hx = pW / 2
-    const hz = pH / 2
-
-    for (let x = minX + stepX / 2; x <= maxX - pW / 2 + 1e-6; x += stepX) {
+    for (const face of faces) {
       if (result.length >= maxPool) break
-      for (let z = minZ + stepZ / 2; z <= maxZ - pH / 2 + 1e-6; z += stepZ) {
+      const polyXZ = face.polygonXZ
+      if (!polyXZ || polyXZ.length < 3) continue
+      const fR = face.faceRight
+      const fD = face.faceDown
+      if (!fR || !fD) continue
+
+      // Project polygon to face-local 2D: (u = fR·XZ, v = fD·XZ)
+      const polyLocal = polyXZ.map(([x, z]): [number, number] => [
+        fR.x * x + fR.z * z,
+        fD.x * x + fD.z * z,
+      ])
+      const uCoords = polyLocal.map(p => p[0])
+      const vCoords = polyLocal.map(p => p[1])
+      const uMin = Math.min(...uCoords)
+      const uMax = Math.max(...uCoords)
+      const vMin = Math.min(...vCoords)
+      const vMax = Math.max(...vCoords)
+
+      const halfR = pW / 2
+      const halfD = pH / 2
+
+      for (let u = uMin + halfR; u <= uMax - halfR + 1e-6; u += stepRight) {
         if (result.length >= maxPool) break
-        if (!panelContained(x, z)) continue
-        if (isInAnyHole(x, z)) continue
+        for (let v = vMin + halfD; v <= vMax - halfD + 1e-6; v += stepDown) {
+          if (result.length >= maxPool) break
 
-        let bestFace: RoofFace | null = null
-        let bestY = -Infinity
-        for (let fi = 0; fi < faces.length; fi++) {
-          const face = faces[fi]
-          if (Math.abs(face.normal.y) < 0.01) continue
-          const bb = faceBBs[fi]
-          const tol = 0.05
-          if (x < bb.min.x - tol || x > bb.max.x + tol) continue
-          if (z < bb.min.z - tol || z > bb.max.z + tol) continue
-          const poly = facePolysXZ[fi]
-          if (!inFaceXZ(x - hx, z - hz, poly)) continue
-          if (!inFaceXZ(x + hx, z - hz, poly)) continue
-          if (!inFaceXZ(x + hx, z + hz, poly)) continue
-          if (!inFaceXZ(x - hx, z + hz, poly)) continue
-          const y = getFaceY(face, x, z)
-          if (y >= wallHeight - 0.05 && y > bestY) { bestY = y; bestFace = face }
+          // All 4 panel corners must be inside the face polygon (in local 2D)
+          if (!inPoly2D(u - halfR, v - halfD, polyLocal)) continue
+          if (!inPoly2D(u + halfR, v - halfD, polyLocal)) continue
+          if (!inPoly2D(u + halfR, v + halfD, polyLocal)) continue
+          if (!inPoly2D(u - halfR, v + halfD, polyLocal)) continue
+
+          // World XZ position (fR and fD are unit vectors, so project back)
+          const wx = fR.x * u + fD.x * v
+          const wz = fR.z * u + fD.z * v
+
+          if (isInAnyHole(wx, wz)) continue
+
+          const wy = getFaceY(face, wx, wz)
+          result.push({
+            x: wx + face.normal.x * PANEL_THICKNESS / 2,
+            y: wy + face.normal.y * PANEL_THICKNESS / 2,
+            z: wz + face.normal.z * PANEL_THICKNESS / 2,
+            tilt: face.tiltDeg, az: face.azimuthDeg,
+            normal: face.normal,
+            faceRight: fR,
+            faceDown: fD,
+          })
         }
-        if (!bestFace) continue
-
-        result.push({
-          x: x + bestFace.normal.x * PANEL_THICKNESS / 2,
-          y: bestY + bestFace.normal.y * PANEL_THICKNESS / 2,
-          z: z + bestFace.normal.z * PANEL_THICKNESS / 2,
-          tilt: bestFace.tiltDeg, az: bestFace.azimuthDeg, normal: bestFace.normal,
-        })
       }
     }
 
@@ -367,7 +374,11 @@ export default function SolarPanels({ localPoly, roofType, pitch, azimuth, wallH
       dummy.position.set(p.x, p.y, p.z)
       dummy.scale.setScalar(isGhost ? 1.05 : 1)
       dummy.rotation.set(0, 0, 0)
-      if (p.tilt > 0.5) {
+      if (p.faceRight && p.faceDown) {
+        // Full frame: X=along ridge, Y=face normal (out of panel), Z=down slope
+        const mat = new THREE.Matrix4().makeBasis(p.faceRight, p.normal.clone().normalize(), p.faceDown)
+        dummy.setRotationFromMatrix(mat)
+      } else if (p.tilt > 0.5) {
         const q = new THREE.Quaternion().setFromUnitVectors(up, p.normal.clone().normalize())
         dummy.quaternion.copy(q)
       }

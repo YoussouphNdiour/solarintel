@@ -274,7 +274,12 @@ export default function ControlsPanel() {
                         </button>
                       ))}
                     </div>
-                    <p className="text-[#475569] text-[9px]">Cliquez aussi sur un pan dans la vue 3D</p>
+                    <p className="inline-flex items-center gap-1 bg-[#0EA5E9]/10 border border-[#0EA5E9]/30 text-[#38BDF8] text-[9px] px-1.5 py-0.5 rounded-full">
+                      <svg className="w-2.5 h-2.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      Cliquez aussi sur un pan dans la vue 3D
+                    </p>
                   </div>
                 )
               })()}
@@ -356,63 +361,6 @@ export default function ControlsPanel() {
                 ))}
               </div>
             </Section>
-
-            {/* Outils SketchUp */}
-            <div className="px-3 py-2 space-y-2 border-t border-[#1E293B]">
-              <p className="text-[10px] text-[#64748B] uppercase tracking-wide">Outils construction</p>
-
-              {/* Hauteur mur avec glissiere */}
-              <div>
-                <div className="flex justify-between items-center mb-1">
-                  <label className="text-[11px] text-[#94A3B8]">Hauteur mur</label>
-                  <span className="text-[11px] font-mono text-[#F59E0B]">{wallHeight.toFixed(1)} m</span>
-                </div>
-                <input
-                  type="range" min="2" max="12" step="0.5" value={wallHeight}
-                  onChange={e => setWallHeight(+e.target.value)}
-                  className="w-full h-1.5 accent-[#F59E0B] cursor-pointer"
-                />
-                <div className="flex justify-between text-[9px] text-[#475569] mt-0.5">
-                  <span>2m (RDC)</span><span>5m (R+1)</span><span>12m (R+3)</span>
-                </div>
-              </div>
-
-              {/* Preset batiments */}
-              <div>
-                <p className="text-[10px] text-[#64748B] mb-1">Presets</p>
-                <div className="grid grid-cols-3 gap-1">
-                  {[
-                    { label: 'Villa', wall: 3, pitch: 20 },
-                    { label: 'Immeuble', wall: 9, pitch: 5 },
-                    { label: 'Hangar', wall: 5, pitch: 10 },
-                  ].map(preset => (
-                    <button
-                      key={preset.label}
-                      onClick={() => { setWallHeight(preset.wall); setPitch(preset.pitch) }}
-                      className="text-[10px] py-1 px-1.5 rounded bg-[#1E293B] text-[#94A3B8] hover:bg-[#334155] hover:text-white transition-colors text-center"
-                    >
-                      {preset.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Orientation rapide */}
-              <div>
-                <p className="text-[10px] text-[#64748B] mb-1">Orientation faitage</p>
-                <div className="grid grid-cols-4 gap-1">
-                  {[{ label: 'S', az: 180 }, { label: 'SE', az: 135 }, { label: 'SW', az: 225 }, { label: 'E/W', az: 90 }].map(o => (
-                    <button
-                      key={o.label}
-                      onClick={() => setAzimuth(o.az)}
-                      className={`text-[10px] py-1 rounded transition-colors ${Math.abs(azimuth - o.az) < 15 ? 'bg-[#0EA5E9] text-white' : 'bg-[#1E293B] text-[#94A3B8] hover:bg-[#334155]'}`}
-                    >
-                      {o.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
 
             <div className="h-px bg-[#334155]" />
 

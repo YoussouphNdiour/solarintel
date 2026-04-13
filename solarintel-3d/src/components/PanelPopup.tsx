@@ -31,8 +31,8 @@ export default function PanelPopup() {
     <div
       className="absolute z-30 pointer-events-auto"
       style={{
-        left: Math.min(px + 12, window.innerWidth - 240),
-        top: Math.max(py - 100, 8),
+        left: Math.max(8, Math.min(px + 12, window.innerWidth - 240)),
+        top: Math.max(8, Math.min(py - 100, window.innerHeight - 240)),
       }}
     >
       <div className="bg-[#1E293B] border border-[#334155] rounded-xl shadow-2xl p-4 w-56">

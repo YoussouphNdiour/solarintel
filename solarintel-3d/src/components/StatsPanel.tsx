@@ -37,7 +37,7 @@ export default function StatsPanel() {
   if (!showStats) return null
 
   return (
-    <div className="absolute bottom-0 left-0 right-0 z-20 bg-[#0F172A]/95 border-t border-[#334155] backdrop-blur-sm">
+    <div className="absolute bottom-0 left-0 right-0 z-30 bg-[#0F172A]/95 border-t border-[#334155] backdrop-blur-sm">
       <div className="px-4 py-3 max-w-5xl mx-auto">
         {/* Header row */}
         <div className="flex items-center justify-between mb-3">
