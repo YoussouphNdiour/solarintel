@@ -286,7 +286,7 @@ export const useStore = create<AppState>((set, get) => ({
     } else {
       set({ pitch })
     }
-    window.parent.postMessage({ type: 'TILT_AZIMUTH', tilt: pitch, azimuth }, '*')
+    window.parent.postMessage({ type: 'TILT_AZIMUTH', tilt: pitch, azimuth, zoneId: selectedZoneId ?? undefined }, '*')
   },
 
   setAzimuth: (azimuth) => {
@@ -300,7 +300,7 @@ export const useStore = create<AppState>((set, get) => ({
     } else {
       set({ azimuth })
     }
-    window.parent.postMessage({ type: 'TILT_AZIMUTH', tilt: pitch, azimuth }, '*')
+    window.parent.postMessage({ type: 'TILT_AZIMUTH', tilt: pitch, azimuth, zoneId: selectedZoneId ?? undefined }, '*')
   },
 
   setWallHeight: (wallHeight) => {

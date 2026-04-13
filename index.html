@@ -2647,8 +2647,32 @@ async function _doCallBackend() {
         panel_brand: STATE.panelBrand,
         panel_model: STATE.panelModel,
         temp_coeff_pmax: STATE.tempCoeff,
-        surface_tilt: _state.roofTilt,
-        surface_azimuth: _state.roofAzimuth || 180,
+        surface_tilt: (function() {
+            var cfg = _state.zonesConfig;
+            var zones = _state.zones;
+            if (!cfg || !zones || zones.length < 2) return _state.roofTilt;
+            var totalArea = 0, weightedTilt = 0;
+            zones.forEach(function(z, idx) {
+                var zc = cfg[String(idx)];
+                var area = z.area || 1;
+                totalArea += area;
+                weightedTilt += (zc ? zc.pitch : (_state.roofTilt || 15)) * area;
+            });
+            return totalArea > 0 ? weightedTilt / totalArea : _state.roofTilt;
+        })(),
+        surface_azimuth: (function() {
+            var cfg = _state.zonesConfig;
+            var zones = _state.zones;
+            if (!cfg || !zones || zones.length < 2) return _state.roofAzimuth || 180;
+            var totalArea = 0, weightedAz = 0;
+            zones.forEach(function(z, idx) {
+                var zc = cfg[String(idx)];
+                var area = z.area || 1;
+                totalArea += area;
+                weightedAz += (zc ? zc.azimuth : (_state.roofAzimuth || 180)) * area;
+            });
+            return totalArea > 0 ? weightedAz / totalArea : (_state.roofAzimuth || 180);
+        })(),
         obstacles_shading_pct: _state.obstaclesShadingPct || 0,
     };
 
@@ -3438,6 +3462,14 @@ window.addEventListener('message', function(e) {
         if (typeof e.data.azimuth === 'number') {
             _state.roofAzimuth = e.data.azimuth;
             _updateAzimuthUI(e.data.azimuth);
+        }
+        // Per-zone pitch/azimuth tracking — when 3D sends a zone-specific update
+        if (e.data.zoneId !== undefined) {
+            if (!_state.zonesConfig) _state.zonesConfig = {};
+            _state.zonesConfig[e.data.zoneId] = {
+                pitch:   typeof e.data.tilt    === 'number' ? e.data.tilt    : (_state.roofTilt    || 15),
+                azimuth: typeof e.data.azimuth === 'number' ? e.data.azimuth : (_state.roofAzimuth || 180),
+            };
         }
         // Update roof geometry KPI badge
         const geomEl = document.getElementById('kpiRoofGeom');
@@ -4298,12 +4330,8 @@ function _getSchemaConfig() {
     const _dc = _state.dcChain || {};
     const nSeries       = +(document.getElementById('modulesInSeries')?.value || _dc.nSeries || 10);
     const nStrings      = +(document.getElementById('stringsParallel')?.value || _dc.nStrings || 1);
-    // Sum across all zones if available, else fall back to STATE.panelCount or estimate
-    const _zonePanelSum = (_state.zones && _state.zones.length > 0)
-        ? _state.zones.reduce(function(s, z) { return s + (z.panelCount || 0); }, 0)
-        : 0;
-    const panelCount = _zonePanelSum > 0 ? _zonePanelSum
-        : (STATE.panelCount || (nSeries * nStrings));
+    // Use STATE.panelCount which is kept up-to-date via ADD_PANEL/REMOVE_PANEL messages from 3D
+    const panelCount = STATE.panelCount || (nSeries * nStrings);
     const installType   = _state.installType || 'autoconsommation';
     const company       = document.getElementById('companyName')?.value || 'SolarIntel';
     const client        = document.getElementById('clientName')?.value  || '';

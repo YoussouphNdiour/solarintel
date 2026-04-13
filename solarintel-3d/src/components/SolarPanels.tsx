@@ -102,6 +102,45 @@ export default function SolarPanels({ localPoly, roofType, pitch, azimuth, wallH
   const holePolygons = overrideHolePolygons !== undefined ? overrideHolePolygons : storeHolePolygons
   const meshRef = useRef<THREE.InstancedMesh>(null)
 
+  const pvTexture = useMemo(() => {
+    const canvas = document.createElement('canvas')
+    canvas.width = 256
+    canvas.height = 512
+    const ctx = canvas.getContext('2d')!
+    // Background: dark navy
+    ctx.fillStyle = '#071220'
+    ctx.fillRect(0, 0, 256, 512)
+    // PV cells: 6 columns × 12 rows
+    const cols = 6, rows = 12
+    const cw = 256 / cols, ch = 512 / rows
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        // Cell background (slight blue tint)
+        ctx.fillStyle = 'rgba(10, 40, 80, 0.9)'
+        ctx.fillRect(c * cw + 1.5, r * ch + 1.5, cw - 3, ch - 3)
+        // Subtle diagonal reflection line in each cell
+        ctx.strokeStyle = 'rgba(14, 165, 233, 0.12)'
+        ctx.lineWidth = 0.8
+        ctx.beginPath()
+        ctx.moveTo(c * cw + 4, r * ch + 4)
+        ctx.lineTo(c * cw + cw - 4, r * ch + ch - 4)
+        ctx.stroke()
+      }
+    }
+    // Grid lines (busbar effect)
+    ctx.strokeStyle = 'rgba(30, 100, 160, 0.6)'
+    ctx.lineWidth = 1.5
+    for (let r = 0; r <= rows; r++) {
+      ctx.beginPath(); ctx.moveTo(0, r * ch); ctx.lineTo(256, r * ch); ctx.stroke()
+    }
+    for (let c = 0; c <= cols; c++) {
+      ctx.beginPath(); ctx.moveTo(c * cw, 0); ctx.lineTo(c * cw, 512); ctx.stroke()
+    }
+    const tex = new THREE.CanvasTexture(canvas)
+    tex.needsUpdate = true
+    return tex
+  }, [])
+
   const panels = useMemo<PanelPos[]>(() => {
     const { bbox, points } = localPoly
     const isMultiFace = roofType === 'gable' || roofType === 'hip'
@@ -499,11 +538,12 @@ export default function SolarPanels({ localPoly, roofType, pitch, azimuth, wallH
         orientation === 'portrait' ? panelHeightMm / 1000 : panelWidthMm / 1000,
       ]} />
       <meshStandardMaterial
-        color={COLOR_NORMAL}
-        roughness={0.25}
-        metalness={0.65}
+        color="#ffffff"
+        map={pvTexture}
+        roughness={0.20}
+        metalness={0.55}
         transparent
-        opacity={0.92}
+        opacity={0.95}
       />
     </instancedMesh>
   )

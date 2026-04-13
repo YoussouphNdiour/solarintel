@@ -69,6 +69,7 @@ export interface ZoneConfig {
   spacingVCm: number
   holePolygons: [number, number][][] | null
   label?: string
+  area?: number
 }
 
 export interface ParentMessage {
@@ -94,6 +95,7 @@ export interface ChildMessage {
   type: 'TILT_AZIMUTH' | 'READY' | 'REMOVE_PANEL' | 'ADD_PANEL' | 'SCREENSHOT_3D' | 'SHADOW_FACTOR'
   tilt?: number
   azimuth?: number
+  zoneId?: string
   // SCREENSHOT_3D
   dataUrl?: string
   mode?: string   // 'normal' | 'irradiance'

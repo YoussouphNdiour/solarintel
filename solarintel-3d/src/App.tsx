@@ -5,6 +5,7 @@ import RoofTypeModal from './components/RoofTypeModal'
 import RoofScene from './components/RoofScene'
 import ControlsPanel from './components/ControlsPanel'
 import StatsPanel from './components/StatsPanel'
+import ZoneInfoOverlay from './components/ZoneInfoOverlay'
 
 export default function App() {
   const { roofType, zones, selectedZoneId, setFromParent } = useStore()
@@ -59,6 +60,9 @@ export default function App() {
 
       {/* Controls panel (right overlay) */}
       <ControlsPanel />
+
+      {/* Zone info overlay (top-center, shown when a zone is selected) */}
+      <ZoneInfoOverlay />
 
       {/* Stats panel (bottom overlay) */}
       <StatsPanel />
