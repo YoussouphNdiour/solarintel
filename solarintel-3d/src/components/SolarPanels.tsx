@@ -386,6 +386,51 @@ export default function SolarPanels({ localPoly, roofType, pitch, azimuth, wallH
   const COLOR_REMOVED = new THREE.Color('#0F172A')
   const COLOR_GHOST = new THREE.Color('#22C55E')
 
+  // ── Pop-in animation when panels change ──────────────────────────────────
+  const animRafRef = useRef<number | null>(null)
+  useEffect(() => {
+    const mesh = meshRef.current
+    if (!mesh || panels.length === 0) return
+    if (animRafRef.current) cancelAnimationFrame(animRafRef.current)
+
+    const start = performance.now()
+    const STAGGER = 18     // ms between each panel start
+    const DUR     = 280    // ms per panel animation
+
+    function animFrame() {
+      const m = meshRef.current
+      if (!m) return
+      const elapsed = performance.now() - start
+      const total   = DUR + panels.length * STAGGER
+      const dummy2  = new THREE.Object3D()
+
+      for (let i = 0; i < panels.length; i++) {
+        const delay = i * STAGGER
+        let scale: number
+        if (elapsed < delay) {
+          scale = 0.001
+        } else {
+          const t = Math.min(1, (elapsed - delay) / DUR)
+          // ease-out with slight overshoot
+          scale = t < 0.75 ? (t / 0.75) * 1.07 : 1.07 - ((t - 0.75) / 0.25) * 0.07
+        }
+        m.getMatrixAt(i, dummy2.matrix)
+        dummy2.matrix.decompose(dummy2.position, dummy2.quaternion, dummy2.scale)
+        dummy2.scale.setScalar(scale)
+        dummy2.updateMatrix()
+        m.setMatrixAt(i, dummy2.matrix)
+      }
+      m.instanceMatrix.needsUpdate = true
+
+      if (elapsed < total) {
+        animRafRef.current = requestAnimationFrame(animFrame)
+      }
+    }
+
+    animRafRef.current = requestAnimationFrame(animFrame)
+    return () => { if (animRafRef.current) cancelAnimationFrame(animRafRef.current) }
+  }, [panels])
+
   useEffect(() => {
     const mesh = meshRef.current
     if (!mesh) return

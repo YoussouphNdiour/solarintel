@@ -2374,6 +2374,39 @@ async function generateReport() {
     _safeCreateIcons();
     status.classList.remove('hidden');
     status.className = 'mt-2 text-xs text-center text-slate-400';
+    status.textContent = 'Capture 3D en cours…';
+
+    // Auto-capture 3D screenshots before generating the report
+    if (_view3dReady) {
+        window._3dScreenshots = {};
+        await new Promise(function(resolve) {
+            var _autoCapTimeout;
+            function _autoCap3DHandler(ev) {
+                if (ev.data && ev.data.type === 'SCREENSHOT_3D' && ev.data.dataUrl && ev.data.mode) {
+                    window._3dScreenshots[ev.data.mode] = ev.data.dataUrl;
+                    if (Object.keys(window._3dScreenshots).length >= 2) {
+                        clearTimeout(_autoCapTimeout);
+                        window.removeEventListener('message', _autoCap3DHandler);
+                        resolve(undefined);
+                    }
+                }
+            }
+            _autoCapTimeout = setTimeout(function() {
+                window.removeEventListener('message', _autoCap3DHandler);
+                resolve(undefined);   // continue even if screenshots didn't arrive
+            }, 3500);
+            window.addEventListener('message', _autoCap3DHandler);
+            var _capFrame = document.getElementById('view3dFrame');
+            if (_capFrame && _capFrame.contentWindow) {
+                _capFrame.contentWindow.postMessage({ type: 'REQUEST_SCREENSHOTS' }, '*');
+            } else {
+                clearTimeout(_autoCapTimeout);
+                window.removeEventListener('message', _autoCap3DHandler);
+                resolve(undefined);
+            }
+        });
+    }
+
     status.textContent = 'Simulation + agents IA en cours…';
 
     const centroid  = STATE.centroid || { latitude: 14.6928, longitude: -17.4467 };
@@ -2627,6 +2660,88 @@ async function _doCallBackend() {
     if (_backendAbort) { _backendAbort.abort(); }
     _backendAbort = new AbortController();
 
+    // ── Multi-zone parallel pvlib simulation ─────────────────────────────────
+    var _mzZones = _state.zones || [];
+    var _mzCfg   = _state.zonesConfig || {};
+    if (_mzZones.length > 1) {
+        var _mzIsBilan  = window._appMode === 'bilan';
+        var _mzSenelecEl = document.getElementById(_mzIsBilan ? 'bilanSenelecTariff' : 'senelecTariff');
+        var _mzSenelecVal = _mzSenelecEl && _mzSenelecEl.value ? _mzSenelecEl.value : null;
+        var _mzCostWc = (+(document.getElementById('panelPriceWc')?.value || 350000)) / (STATE.panelPower || 545);
+        var _mzBase = {
+            panel_power_wc:         STATE.panelPower,
+            electricity_price_kwh:  STATE.electricity_price_kwh,
+            annual_increase_pct:    STATE.annual_increase_pct,
+            senelec_tariff:         _mzSenelecVal,
+            annual_consumption_kwh: STATE.annualConsumption ?? null,
+            cost_per_wc_xof:        _mzCostWc,
+            system_lifetime_years:  25,
+            degradation_pct_year:   0.5,
+            panel_brand:  STATE.panelBrand,
+            panel_model:  STATE.panelModel,
+            temp_coeff_pmax:        STATE.tempCoeff,
+            obstacles_shading_pct:  _state.obstaclesShadingPct || 0,
+        };
+        var _mzRequests = _mzZones.map(function(zone, idx) {
+            var zc  = _mzCfg[String(idx)] || {};
+            var lat = zone.centroid ? zone.centroid.latitude  : ((STATE.centroid||{}).latitude  || 14.6928);
+            var lon = zone.centroid ? zone.centroid.longitude : ((STATE.centroid||{}).longitude || -17.4467);
+            var pc  = zone.panelCount || Math.max(1, Math.round(STATE.panelCount / _mzZones.length));
+            return Object.assign({}, _mzBase, {
+                latitude:        lat,
+                longitude:       lon,
+                panel_count:     pc,
+                surface_tilt:    zc.pitch   !== undefined ? zc.pitch   : (_state.roofTilt    || 15),
+                surface_azimuth: zc.azimuth !== undefined ? zc.azimuth : (_state.roofAzimuth || 180),
+            });
+        });
+        try {
+            var _mzResponses = await Promise.all(_mzRequests.map(function(pl) {
+                return fetch(API_BASE + '/api/simulate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(pl),
+                    signal: _backendAbort.signal,
+                }).then(function(r) { return r.ok ? r.json() : null; }).catch(function() { return null; });
+            }));
+            var _mzValid = _mzResponses.filter(Boolean);
+            if (_mzValid.length > 0) {
+                var _mzTotal = _mzValid.reduce(function(s, r) { return s + r.simulation.annual_production_kwh; }, 0);
+                var _mzMonthly = (_mzValid[0].simulation.monthly_production_kwh || []).map(function(_, mi) {
+                    return Math.round(_mzValid.reduce(function(s, r) { return s + ((r.simulation.monthly_production_kwh||[])[mi]||0); }, 0));
+                });
+                var _mzEcon = _mzValid[0].economics;
+                var _mzScale = (_mzZones[0].panelCount||1) > 0 ? STATE.panelCount / (_mzZones[0].panelCount||1) : 1;
+                _state.annualProduction_kWh = Math.round(_mzTotal);
+                var _mzAnnual = STATE.annualConsumption || 0;
+                _state.coverageRate = _mzAnnual > 0 ? Math.min(100, Math.round(_mzTotal / _mzAnnual * 100)) : 0;
+                STATE.coverageRate  = _state.coverageRate;
+                _state.annualSavings = Math.round((_mzEcon.annual_savings_year1_xof||0) * _mzScale);
+                _state.paybackYears  = _mzEcon.payback_years;
+                _state.lcoe          = _mzEcon.lcoe_xof_kwh;
+                setKPI('kpiProduction', numberFmt(Math.round(_mzTotal)), 'kWh/an');
+                setKPI('kpiCoverage',   _state.coverageRate > 0 ? Math.round(_state.coverageRate) : '—', '%');
+                setKPI('kpiSavings',    numberFmt(_state.annualSavings), 'XOF');
+                setKPI('kpiPayback',    _mzEcon.payback_years, 'ans');
+                setKPI('kpiLCOE',       _mzEcon.lcoe_xof_kwh, 'XOF/kWh');
+                updateWorkflowSteps();
+                if (_mzMonthly.length === 12) { _state.monthlyProduction = _mzMonthly; renderMonthlyChart(_mzMonthly); }
+                document.getElementById('apiStatus').className = 'status-dot online';
+                document.getElementById('apiStatusText').textContent = 'API en ligne';
+                updateQualityBadge(); _saveSimHistory();
+                document.getElementById('btnExportCSV')?.classList.remove('hidden');
+                document.getElementById('btnCompare')?.classList.remove('hidden');
+            }
+        } catch(err) {
+            if (err && err.name !== 'AbortError') {
+                document.getElementById('apiStatus').className = 'status-dot offline';
+                document.getElementById('apiStatusText').textContent = 'Erreur simulation';
+            }
+        }
+        return;
+    }
+    // ── Single-zone fallback ─────────────────────────────────────────────────
+
     const centroid = STATE.centroid || { latitude: 14.6928, longitude: -17.4467 };
     // Lire le bon select Senelec selon le mode de travail
     const isBilan = window._appMode === 'bilan';
@@ -2647,32 +2762,8 @@ async function _doCallBackend() {
         panel_brand: STATE.panelBrand,
         panel_model: STATE.panelModel,
         temp_coeff_pmax: STATE.tempCoeff,
-        surface_tilt: (function() {
-            var cfg = _state.zonesConfig;
-            var zones = _state.zones;
-            if (!cfg || !zones || zones.length < 2) return _state.roofTilt;
-            var totalArea = 0, weightedTilt = 0;
-            zones.forEach(function(z, idx) {
-                var zc = cfg[String(idx)];
-                var area = z.area || 1;
-                totalArea += area;
-                weightedTilt += (zc ? zc.pitch : (_state.roofTilt || 15)) * area;
-            });
-            return totalArea > 0 ? weightedTilt / totalArea : _state.roofTilt;
-        })(),
-        surface_azimuth: (function() {
-            var cfg = _state.zonesConfig;
-            var zones = _state.zones;
-            if (!cfg || !zones || zones.length < 2) return _state.roofAzimuth || 180;
-            var totalArea = 0, weightedAz = 0;
-            zones.forEach(function(z, idx) {
-                var zc = cfg[String(idx)];
-                var area = z.area || 1;
-                totalArea += area;
-                weightedAz += (zc ? zc.azimuth : (_state.roofAzimuth || 180)) * area;
-            });
-            return totalArea > 0 ? weightedAz / totalArea : (_state.roofAzimuth || 180);
-        })(),
+        surface_tilt: _state.roofTilt,
+        surface_azimuth: _state.roofAzimuth || 180,
         obstacles_shading_pct: _state.obstaclesShadingPct || 0,
     };
 
@@ -4414,7 +4505,58 @@ function renderSchemaUnifilaireFromState() {
     const cfg = _getSchemaConfig();
     const svg = _buildSchemaSVG(cfg);
     const container = document.getElementById('schemaContainer');
-    if (container) container.innerHTML = svg;
+    if (container) {
+        container.innerHTML = svg;
+        _animateSchemaSVG(container);
+    }
+}
+
+function _animateSchemaSVG(container) {
+    // Lines: stroke-dashoffset draw-on effect
+    var lines = container.querySelectorAll('line');
+    lines.forEach(function(line, i) {
+        line.style.strokeDasharray = '2000 2000';
+        line.style.strokeDashoffset = '2000';
+        line.style.transition = 'stroke-dashoffset ' + (0.55 + i * 0.008) + 's cubic-bezier(0.4,0,0.2,1) ' + (i * 0.012) + 's';
+    });
+    // Rects: fade + scale-in
+    var rects = container.querySelectorAll('rect');
+    rects.forEach(function(rect, i) {
+        rect.style.opacity = '0';
+        rect.style.transform = 'scale(0.92)';
+        rect.style.transformBox = 'fill-box';
+        rect.style.transformOrigin = 'center';
+        rect.style.transition = 'opacity 0.35s ease ' + (0.05 + i * 0.018) + 's, transform 0.35s ease ' + (0.05 + i * 0.018) + 's';
+    });
+    // Circles: fade-in
+    var circles = container.querySelectorAll('circle');
+    circles.forEach(function(circle, i) {
+        circle.style.opacity = '0';
+        circle.style.transition = 'opacity 0.25s ease ' + (0.1 + i * 0.01) + 's';
+    });
+    // Polygons: fade-in
+    var polys = container.querySelectorAll('polygon');
+    polys.forEach(function(poly, i) {
+        poly.style.opacity = '0';
+        poly.style.transition = 'opacity 0.25s ease ' + (0.12 + i * 0.015) + 's';
+    });
+    // Text: fade-in after elements
+    var texts = container.querySelectorAll('text');
+    texts.forEach(function(text, i) {
+        text.style.opacity = '0';
+        text.style.transition = 'opacity 0.3s ease ' + (0.2 + i * 0.014) + 's';
+    });
+
+    // Trigger all transitions on the next paint
+    requestAnimationFrame(function() {
+        requestAnimationFrame(function() {
+            lines.forEach(function(line) { line.style.strokeDashoffset = '0'; });
+            rects.forEach(function(rect) { rect.style.opacity = '1'; rect.style.transform = 'scale(1)'; });
+            circles.forEach(function(circle) { circle.style.opacity = '1'; });
+            polys.forEach(function(poly) { poly.style.opacity = '1'; });
+            texts.forEach(function(text) { text.style.opacity = '1'; });
+        });
+    });
 }
 
 function _buildSchemaSVG(c) {
