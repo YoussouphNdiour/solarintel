@@ -4969,30 +4969,39 @@ function _buildSchemaSVG(c) {
         svg += L(gbX, jctY, jctX+4, jctY, AC, 1.5);
     }
 
-    // ── Title block (bottom, matching reference exactly) ──────────────────────
-    const tY = H - 40;
-    svg += R(OX, tY, W-OX*2, 38, '#F9FAFB', BORD, 1, 0);
-    const div1 = OX + 145, div2 = W - 210, div3 = W - 100, div4 = W - 46;
-    [div1, div2, div3, div4].forEach(x => svg += L(x, tY, x, tY+38, '#9CA3AF', 0.7));
-    svg += L(OX, tY+19, W-OX, tY+19, '#D1D5DB', 0.5);
+    // ── Title block (bottom cartouche) ───────────────────────────────────────
+    const tY = H - 44;
+    const tH = 42;
+    svg += R(OX, tY, W-OX*2, tH, '#F8FAFC', BORD, 1, 0);
+    const div1 = OX + 145, div2 = W - 220, div3 = W - 100, div4 = W - 52;
+    [div1, div2, div3, div4].forEach(x => svg += L(x, tY, x, tY+tH, '#CBD5E1', 0.8));
+    svg += L(OX, tY+tH/2, W-OX, tY+tH/2, '#E2E8F0', 0.6);
 
-    svg += T(OX+73, tY+13, c.company, MD + 'font-weight:700;fill:#111827;');
-    svg += T(OX+73, tY+30, c.location, SM + 'fill:#374151;');
+    // Col 1: company / location
+    svg += T(OX+73, tY+14, c.company, MD + 'font-weight:700;fill:#0F172A;');
+    svg += T(OX+73, tY+32, c.location, SM + 'fill:#475569;');
 
+    // Col 2: system title / electrical info
     const typeStr = c.installType === 'autonome' ? 'autonome avec stockage'
                   : c.installType === 'hybride'  ? 'hybride avec stockage + réseau'
                   :                                'autoconsommation';
-    svg += T((div1+div2)/2, tY+13, `Système solaire ${typeStr} ${c.client}`, MD + 'font-weight:700;fill:#111827;');
-    svg += T((div1+div2)/2, tY+30,
-        `P. PV : ${c.peakKwc} KWc${c.hasBat ? ` ; Capacité batteries : ${c.batCapKwh} KWh` : ''} ; P. Ond: ${c.invPow} KW`,
-        SM + 'fill:#374151;');
+    svg += T((div1+div2)/2, tY+14, `Système solaire ${typeStr}`, MD + 'font-weight:700;fill:#0F172A;');
+    svg += T((div1+div2)/2, tY+32,
+        `P. PV : ${c.peakKwc} kWc${c.hasBat ? ` · Batt. : ${c.batCapKwh} kWh` : ''} · P. Ond. : ${c.invPow} kW`,
+        SM + 'fill:#475569;');
 
+    // Col 3: date and signatory labels + values (2 sub-rows)
     const today = new Date().toLocaleDateString('fr-FR');
-    svg += T(div2+8, tY+10, 'Dessiné le :', SM + 'fill:#374151;', 'start');
-    svg += T(div2+8, tY+27, 'Par :', SM + 'fill:#374151;', 'start');
-    svg += T(div3-4, tY+13, today, MD + 'font-weight:700;fill:#111827;', 'end');
-    svg += T(div3-4, tY+30, c.client || c.company, MD + 'fill:#111827;', 'end');
-    svg += T((div3+div4)/2, tY+22, '01', LG + 'fill:#374151;');
+    const midDate = (div2 + div3) / 2;
+    svg += T(div2+6, tY+12, 'Dessiné le :', `font-size:8px;font-family:sans-serif;fill:#64748B;`, 'start');
+    svg += T(div3-6,  tY+12, today,          `font-size:9px;font-family:sans-serif;font-weight:600;fill:#0F172A;`, 'end');
+    svg += L(div2+6, tY+tH/2+2, div3-6, tY+tH/2+2, '#E2E8F0', 0.4);
+    svg += T(div2+6, tY+32, 'Par :',         `font-size:8px;font-family:sans-serif;fill:#64748B;`, 'start');
+    svg += T(div3-6,  tY+32, c.client || c.company, `font-size:9px;font-family:sans-serif;fill:#0F172A;`, 'end');
+
+    // Col 4: revision badge
+    svg += R(div3+4, tY+6, div4-div3-8, tH-12, '#0EA5E9', 'none', 0, 4);
+    svg += T((div3+div4)/2, tY+tH/2+5, '01', `font-size:14px;font-family:sans-serif;font-weight:700;fill:#fff;`);
 
     // ── Outer border ──────────────────────────────────────────────────────────
     svg += R(OX, OY-8, W-OX*2, H-OY-22, 'none', BORD, 1.5, 0);

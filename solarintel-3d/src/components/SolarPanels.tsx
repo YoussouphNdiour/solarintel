@@ -334,10 +334,16 @@ export default function SolarPanels({ localPoly, roofType, pitch, azimuth, wallH
       const fD = face.faceDown
       if (!fR || !fD) continue
 
-      // Project polygon to face-local 2D: (u = fR·XZ, v = fD·XZ)
+      // fD is a 3D slope vector; its XZ projection has magnitude cosP, not 1.
+      // Normalise the XZ component so projection and recovery are consistent.
+      const fDxzLen = Math.hypot(fD.x, fD.z) || 1
+      const fDxzX = fD.x / fDxzLen
+      const fDxzZ = fD.z / fDxzLen
+
+      // Project polygon to face-local 2D: (u = fR·XZ, v = fDxz·XZ)
       const polyLocal = polyXZ.map(([x, z]): [number, number] => [
         fR.x * x + fR.z * z,
-        fD.x * x + fD.z * z,
+        fDxzX * x + fDxzZ * z,
       ])
       const uCoords = polyLocal.map(p => p[0])
       const vCoords = polyLocal.map(p => p[1])
@@ -360,9 +366,9 @@ export default function SolarPanels({ localPoly, roofType, pitch, azimuth, wallH
           if (!inPoly2D(u + halfR, v + halfD, polyLocal)) continue
           if (!inPoly2D(u - halfR, v + halfD, polyLocal)) continue
 
-          // World XZ position (fR and fD are unit vectors, so project back)
-          const wx = fR.x * u + fD.x * v
-          const wz = fR.z * u + fD.z * v
+          // World XZ position — use normalised XZ basis vectors to invert
+          const wx = fR.x * u + fDxzX * v
+          const wz = fR.z * u + fDxzZ * v
 
           if (isInAnyHole(wx, wz)) continue
 
