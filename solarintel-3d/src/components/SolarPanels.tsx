@@ -465,8 +465,14 @@ export default function SolarPanels({ localPoly, roofType, pitch, azimuth, wallH
       dummy.scale.setScalar(isGhost ? 1.05 : 1)
       dummy.rotation.set(0, 0, 0)
       if (p.faceRight && p.faceDown) {
-        // Full frame: X=along ridge, Y=face normal (out of panel), Z=down slope
-        const mat = new THREE.Matrix4().makeBasis(p.faceRight, p.normal.clone().normalize(), p.faceDown)
+        // Build a right-handed (det=+1) rotation matrix.
+        // makeBasis(faceRight, normal, faceDown) is left-handed for several face
+        // orientations (det=-1), which makes setFromRotationMatrix produce a
+        // degenerate quaternion (effectively identity) — panels appear un-tilted.
+        // Fix: use faceRight × normal as the guaranteed right-handed Z column.
+        const n = p.normal.clone().normalize()
+        const faceZ = new THREE.Vector3().crossVectors(p.faceRight, n)
+        const mat = new THREE.Matrix4().makeBasis(p.faceRight, n, faceZ)
         dummy.setRotationFromMatrix(mat)
       } else if (p.tilt > 0.5) {
         const q = new THREE.Quaternion().setFromUnitVectors(up, p.normal.clone().normalize())

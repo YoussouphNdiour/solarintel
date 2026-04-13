@@ -2947,6 +2947,10 @@ require([
                     return;
                 }
                 handlePolygonUpdate(event.graphic.geometry, false);
+                // Tag graphic with its zone index so delete handler can identify it
+                event.graphic.attributes = Object.assign({}, event.graphic.attributes || {}, {
+                    _zoneIdx: _state.activeZoneIdx,
+                });
                 // Enable add/select/delete tools
                 ['toolAddPanel','toolSelect','toolDelete'].forEach(function(id) {
                     const el = document.getElementById(id);
@@ -2978,18 +2982,74 @@ require([
             }
         });
 
-        sketchWidget.on("delete", function() {
+        sketchWidget.on("delete", function(event) {
             if (_suppressDeleteHandler) return;
+
+            // Identify which zone graphics were deleted (ignore hole graphics)
+            var deletedGraphics = (event && event.graphics) ? event.graphics : [];
+            var deletedZoneIdxs = [];
+            deletedGraphics.forEach(function(g) {
+                if (g.attributes && g.attributes._isHole) return;
+                if (g.attributes && typeof g.attributes._zoneIdx === 'number') {
+                    deletedZoneIdxs.push(g.attributes._zoneIdx);
+                }
+            });
+
+            // Remove identified zones (descending order to keep indices stable)
+            if (deletedZoneIdxs.length > 0) {
+                deletedZoneIdxs.sort(function(a, b) { return b - a; });
+                deletedZoneIdxs.forEach(function(idx) {
+                    _state.zones.splice(idx, 1);
+                });
+
+                // Re-index zonesConfig keys after deletion
+                if (_state.zonesConfig) {
+                    var newCfg = {};
+                    Object.keys(_state.zonesConfig).forEach(function(key) {
+                        var ki = parseInt(key, 10);
+                        var shift = deletedZoneIdxs.filter(function(di) { return di < ki; }).length;
+                        if (!deletedZoneIdxs.includes(ki)) {
+                            newCfg[String(ki - shift)] = _state.zonesConfig[key];
+                        }
+                    });
+                    _state.zonesConfig = newCfg;
+                }
+
+                // Re-index _zoneIdx on remaining sketch layer graphics
+                if (sketchLayer) {
+                    sketchLayer.graphics.forEach(function(g) {
+                        if (!g.attributes || typeof g.attributes._zoneIdx !== 'number') return;
+                        var ki = g.attributes._zoneIdx;
+                        var shift = deletedZoneIdxs.filter(function(di) { return di < ki; }).length;
+                        if (shift > 0) {
+                            g.attributes = Object.assign({}, g.attributes, { _zoneIdx: ki - shift });
+                        }
+                    });
+                }
+            } else {
+                // Fallback: no tagged zones found → wipe everything
+                _state.zones = [];
+            }
+
             panelLayer.removeAll();
             panelHistory = [];
             _setUndoEnabled(false);
-            _state.zones = [];
-            _state.activeZoneIdx = -1;
-            STATE.polygon = null;
-            STATE.polygonArea_m2 = 0;
-            STATE.centroid = null;
-            document.getElementById('toolClear').disabled = true;
-            document.getElementById('toolHole').disabled = true;
+
+            if (_state.zones.length === 0) {
+                _state.activeZoneIdx = -1;
+                STATE.polygon = null;
+                STATE.polygonArea_m2 = 0;
+                STATE.centroid = null;
+                document.getElementById('toolClear').disabled = true;
+                document.getElementById('toolHole').disabled = true;
+            } else {
+                _state.activeZoneIdx = Math.max(0, Math.min(_state.activeZoneIdx, _state.zones.length - 1));
+                STATE.polygon        = _state.zones[0].polygon;
+                STATE.polygonArea_m2 = _state.zones.reduce(function(s, z) { return s + (z.area || 0); }, 0);
+                STATE.centroid       = _state.zones[0].centroid;
+                document.getElementById('toolHole').disabled = (_state.zones.length === 0);
+                generateCalpinage();
+            }
         });
 
         // ── Custom panel management click handler ──────────────────
