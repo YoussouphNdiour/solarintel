@@ -27,6 +27,8 @@ build/
 # solarintel-3d — exclude build artifacts and dependencies
 solarintel-3d/node_modules/
 solarintel-3d/.vite/
+# Track compiled dist (served at /3d/ by FastAPI)
+!solarintel-3d/dist/
 
 # Test / coverage
 .pytest_cache/
