@@ -230,6 +230,48 @@ export default function ControlsPanel() {
 
           <div className="p-4 space-y-5 max-h-[calc(100vh-120px)] overflow-y-auto scrollbar-thin">
 
+            {/* Zone switcher — shown only in multi-zone mode */}
+              {zones.length > 1 && (
+                <div className="space-y-2">
+                  <div className="text-[#64748B] text-[10px] uppercase tracking-widest font-semibold">Zones</div>
+                  <div className="space-y-1">
+                    {zones.map((zone, i) => {
+                      const ROOF_SHORT: Record<string, string> = {
+                        flat: 'Plat', shed: '1 pan', gable: '2 pans', hip: '4 pans',
+                      }
+                      const isActive = selectedZoneId === zone.id
+                      return (
+                        <button
+                          key={zone.id}
+                          onClick={() => selectZone(zone.id)}
+                          className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-left transition-all ${
+                            isActive
+                              ? 'bg-[#0EA5E9]/15 border border-[#0EA5E9]/40 text-white'
+                              : 'bg-[#1E293B] border border-transparent text-[#94A3B8] hover:text-white hover:border-[#334155]'
+                          }`}
+                        >
+                          <div className={`w-2 h-2 rounded-full shrink-0 ${isActive ? 'bg-[#0EA5E9]' : 'bg-[#475569]'}`} />
+                          <div className="flex-1 min-w-0">
+                            <div className="text-xs font-semibold leading-none mb-0.5">Zone {i + 1}</div>
+                            <div className="text-[#64748B] text-[9px] leading-none truncate">
+                              {zone.panelCount > 0 ? `${zone.panelCount} pann.` : 'Aucun panneau'}
+                              {zone.roofType ? ` · ${ROOF_SHORT[zone.roofType] ?? zone.roofType}` : ''}
+                              {zone.pitch !== undefined ? ` · ${zone.pitch}°` : ''}
+                            </div>
+                          </div>
+                          {isActive && (
+                            <svg className="w-3 h-3 text-[#0EA5E9] shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                            </svg>
+                          )}
+                        </button>
+                      )
+                    })}
+                  </div>
+                  <div className="h-px bg-[#1E293B]" />
+                </div>
+              )}
+
             {/* Roof */}
             <Section title="Toiture">
               <div className="space-y-1.5">

@@ -71,12 +71,13 @@ function SceneContent() {
       <ambientLight intensity={0.2} />
       {multiZone ? (
         <>
-          {zones.map(zone => {
+          {zones.map((zone, zoneIndex) => {
             const [ox, oz] = zoneOffsets.get(zone.id) || [0, 0]
             return (
               <BuildingGroup
                 key={zone.id}
                 zone={zone}
+                zoneIndex={zoneIndex}
                 offsetX={ox}
                 offsetZ={oz}
                 isSelected={selectedZoneId === zone.id}

@@ -9,7 +9,7 @@ const CO2_KG_PER_KWH = 0.55  // Senegal grid
 const FCFA_PER_KWH = 110      // approx. Senelec tariff
 
 export default function StatsPanel() {
-  const { panelCount, removedPanels, annualConsumption, installType, showStats, roofType, pitch } = useStore()
+  const { panelCount, removedPanels, annualConsumption, installType, showStats, roofType, pitch, zones } = useStore()
 
   const activeCount = panelCount - removedPanels.size
   const peakKwc = activeCount * 0.545
@@ -111,6 +111,38 @@ export default function StatsPanel() {
             )}
           </div>
         </div>
+
+        {/* Per-zone breakdown (only shown when multiple zones exist) */}
+        {zones.length > 1 && (
+          <div className="mt-3 pt-3 border-t border-[#1E293B]">
+            <div className="text-[#64748B] text-[10px] uppercase tracking-widest mb-2">Détail par zone</div>
+            <div className="flex gap-2 flex-wrap">
+              {zones.map((zone, i) => {
+                const ROOF_SHORT: Record<string, string> = {
+                  flat: 'Plat', shed: '1 pan', gable: '2 pans', hip: '4 pans',
+                }
+                const zKwc = (zone.panelCount * 0.545).toFixed(1)
+                return (
+                  <div
+                    key={zone.id}
+                    className="bg-[#1E293B] rounded-lg px-3 py-2 flex items-center gap-3"
+                  >
+                    <div className="w-1.5 h-1.5 rounded-full bg-[#0EA5E9] shrink-0" />
+                    <div>
+                      <div className="text-[#94A3B8] text-[9px] uppercase tracking-wider">Zone {i + 1}</div>
+                      <div className="text-white text-xs font-semibold font-mono">{zone.panelCount} pann. · {zKwc} kWc</div>
+                      {zone.roofType && (
+                        <div className="text-[#64748B] text-[9px]">
+                          {ROOF_SHORT[zone.roofType] ?? zone.roofType} · {zone.pitch ?? 15}°
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )
