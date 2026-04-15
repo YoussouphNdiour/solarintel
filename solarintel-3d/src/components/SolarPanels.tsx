@@ -354,17 +354,21 @@ export default function SolarPanels({ localPoly, roofType, pitch, azimuth, wallH
 
       const halfR = pW / 2
       const halfD = pH / 2
+      // fDxzLen == cosP: panel physical height pH on the slope projects to
+      // pH*cosP in the XZ-normalised v axis. Use cosP-corrected extents.
+      const halfD_v   = halfD   * fDxzLen
+      const stepDown_v = stepDown * fDxzLen
 
       for (let u = uMin + halfR; u <= uMax - halfR + 1e-6; u += stepRight) {
         if (result.length >= maxPool) break
-        for (let v = vMin + halfD; v <= vMax - halfD + 1e-6; v += stepDown) {
+        for (let v = vMin + halfD_v; v <= vMax - halfD_v + 1e-6; v += stepDown_v) {
           if (result.length >= maxPool) break
 
           // All 4 panel corners must be inside the face polygon (in local 2D)
-          if (!inPoly2D(u - halfR, v - halfD, polyLocal)) continue
-          if (!inPoly2D(u + halfR, v - halfD, polyLocal)) continue
-          if (!inPoly2D(u + halfR, v + halfD, polyLocal)) continue
-          if (!inPoly2D(u - halfR, v + halfD, polyLocal)) continue
+          if (!inPoly2D(u - halfR, v - halfD_v, polyLocal)) continue
+          if (!inPoly2D(u + halfR, v - halfD_v, polyLocal)) continue
+          if (!inPoly2D(u + halfR, v + halfD_v, polyLocal)) continue
+          if (!inPoly2D(u - halfR, v + halfD_v, polyLocal)) continue
 
           // World XZ position — use normalised XZ basis vectors to invert
           const wx = fR.x * u + fDxzX * v
@@ -463,20 +467,24 @@ export default function SolarPanels({ localPoly, roofType, pitch, azimuth, wallH
 
       dummy.position.set(p.x, p.y, p.z)
       dummy.scale.setScalar(isGhost ? 1.05 : 1)
-      dummy.rotation.set(0, 0, 0)
       if (p.faceRight && p.faceDown) {
-        // Build a right-handed (det=+1) rotation matrix.
-        // makeBasis(faceRight, normal, faceDown) is left-handed for several face
-        // orientations (det=-1), which makes setFromRotationMatrix produce a
-        // degenerate quaternion (effectively identity) — panels appear un-tilted.
-        // Fix: use faceRight × normal as the guaranteed right-handed Z column.
+        // Two-step quaternion: panel lies flat on the slope face.
+        // Step 1 — tilt Y → face normal (panel face now parallel to slope)
         const n = p.normal.clone().normalize()
-        const faceZ = new THREE.Vector3().crossVectors(p.faceRight, n)
-        const mat = new THREE.Matrix4().makeBasis(p.faceRight, n, faceZ)
-        dummy.setRotationFromMatrix(mat)
+        const q1 = new THREE.Quaternion().setFromUnitVectors(up, n)
+        // Step 2 — spin around normal to align panel X with the ridge (faceRight)
+        const rotX = new THREE.Vector3(1, 0, 0).applyQuaternion(q1)
+        const fR   = p.faceRight.clone().normalize()
+        const sinA = n.dot(new THREE.Vector3().crossVectors(rotX, fR))
+        const cosA = rotX.dot(fR)
+        dummy.quaternion.multiplyQuaternions(
+          new THREE.Quaternion().setFromAxisAngle(n, Math.atan2(sinA, cosA)),
+          q1,
+        )
       } else if (p.tilt > 0.5) {
-        const q = new THREE.Quaternion().setFromUnitVectors(up, p.normal.clone().normalize())
-        dummy.quaternion.copy(q)
+        dummy.quaternion.setFromUnitVectors(up, p.normal.clone().normalize())
+      } else {
+        dummy.quaternion.identity()
       }
       dummy.updateMatrix()
       mesh.setMatrixAt(i, dummy.matrix)
